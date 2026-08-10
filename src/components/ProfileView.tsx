@@ -14,6 +14,9 @@ interface ProfileViewProps {
   currentUser?: { displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
   onLoginWithGoogle?: () => void;
   onLogoutGoogle?: () => void;
+  syncStatus?: 'synced' | 'syncing' | 'error' | 'idle';
+  lastSyncedAt?: string | null;
+  onManualSync?: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -26,6 +29,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   currentUser,
   onLoginWithGoogle,
   onLogoutGoogle,
+  syncStatus = 'idle',
+  lastSyncedAt,
+  onManualSync,
 }) => {
   const sym = config.currencySymbol || '$';
   const currentCode = config.currencyCode || 'USD';
@@ -357,9 +363,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {currentUser && (
-          <div className="bg-white/80 p-3 rounded-xl border border-[#006397]/15 flex items-center gap-2 text-xs text-[#006397] font-semibold">
-            <span className="material-symbols-outlined text-[18px] text-[#00a656]">cloud_done</span>
-            <span>Real-time Firestore synchronization active for <strong>{currentUser.email}</strong></span>
+          <div className="flex flex-col gap-2.5 mt-1">
+            <div className="bg-white/80 p-3.5 rounded-xl border border-[#006397]/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-[#006397] font-semibold">
+                <span className={`material-symbols-outlined text-[18px] ${syncStatus === 'syncing' ? 'text-[#0284c7] animate-spin' : syncStatus === 'error' ? 'text-[#c5221f]' : 'text-[#00a656]'}`}>
+                  {syncStatus === 'syncing' ? 'sync' : syncStatus === 'error' ? 'sync_problem' : 'cloud_done'}
+                </span>
+                <span>
+                  Status: <strong>{syncStatus === 'syncing' ? 'Syncing with Firestore...' : syncStatus === 'error' ? 'Sync Issue / Quota Notice' : 'Real-time Cloud Synced'}</strong>
+                  {lastSyncedAt && ` (${lastSyncedAt})`}
+                </span>
+              </div>
+              <button
+                onClick={onManualSync}
+                className="px-3.5 py-1.5 bg-[#006397] hover:bg-[#00476e] text-white font-bold rounded-lg transition-all flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[16px]">refresh</span>
+                <span>Force Sync Now</span>
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#f8fafc] rounded-xl border border-[#e2e8f0] text-[11px] text-[#475569] space-y-1">
+              <p className="font-semibold text-[#1e293b] flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-[#006397]">help_outline</span>
+                How to verify cross-device sync on Laptop & Mobile:
+              </p>
+              <ul className="list-disc pl-4 space-y-0.5 leading-relaxed">
+                <li>Confirm both devices display <strong>{currentUser.email}</strong> here.</li>
+                <li>Tap <strong>"Force Sync Now"</strong> on either device to trigger an instant cloud sync.</li>
+                <li>Add a transaction on your phone and watch it reflect live on your laptop screen!</li>
+              </ul>
+            </div>
           </div>
         )}
       </div>

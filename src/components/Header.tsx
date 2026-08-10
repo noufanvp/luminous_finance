@@ -10,6 +10,9 @@ interface HeaderProps {
   currentUser?: { displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
   onLoginWithGoogle?: () => void;
   onLogoutGoogle?: () => void;
+  syncStatus?: 'synced' | 'syncing' | 'error' | 'idle';
+  lastSyncedAt?: string | null;
+  onManualSync?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +24,9 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onLoginWithGoogle,
   onLogoutGoogle,
+  syncStatus = 'idle',
+  lastSyncedAt,
+  onManualSync,
 }) => {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -101,7 +107,29 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Trailing: Wallet Icon Button & Google Login Button */}
             <div className="flex items-center gap-2">
-              {!currentUser && (
+              {currentUser ? (
+                <button
+                  onClick={onManualSync}
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all active:scale-95 text-xs font-bold shrink-0 ${
+                    syncStatus === 'syncing'
+                      ? 'bg-[#e0f2fe] border-[#38bdf8] text-[#0284c7]'
+                      : syncStatus === 'error'
+                      ? 'bg-[#ffebe9] border-[#ff8e88] text-[#c5221f]'
+                      : 'bg-[#e6f4ea] border-[#ceead6] text-[#137333]'
+                  }`}
+                  title={lastSyncedAt ? `Last cloud sync at ${lastSyncedAt}. Click to force sync.` : 'Click to sync with cloud.'}
+                >
+                  <span className={`material-symbols-outlined text-[16px] ${syncStatus === 'syncing' ? 'animate-spin' : ''}`}>
+                    {syncStatus === 'syncing' ? 'sync' : syncStatus === 'error' ? 'sync_problem' : 'cloud_done'}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync Issue' : 'Synced'}
+                  </span>
+                  {lastSyncedAt && syncStatus === 'synced' && (
+                    <span className="text-[10px] font-mono opacity-80 hidden md:inline">({lastSyncedAt})</span>
+                  )}
+                </button>
+              ) : (
                 <button
                   onClick={onLoginWithGoogle}
                   className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#006397] hover:bg-[#00476e] text-white transition-all active:scale-95 shadow-2xs shrink-0 text-xs font-bold"

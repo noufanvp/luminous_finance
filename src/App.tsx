@@ -27,7 +27,23 @@ import {
   logoutGoogle,
   subscribeToUserAppData,
   saveUserAppData,
+  getUserAppData,
 } from './firebase';
+
+function mergeTransactionsById(local: Transaction[], remote: Transaction[]): Transaction[] {
+  const map = new Map<string, Transaction>();
+  if (Array.isArray(local)) {
+    local.forEach((t) => {
+      if (t && t.id) map.set(t.id, t);
+    });
+  }
+  if (Array.isArray(remote)) {
+    remote.forEach((t) => {
+      if (t && t.id) map.set(t.id, t);
+    });
+  }
+  return Array.from(map.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -86,16 +102,32 @@ export default function App() {
   }, []);
 
   const isInitialMount = useRef(true);
-  const isRemoteUpdatingRef = useRef(false);
   const lastSavedJsonRef = useRef('');
   const [syncQuotaNotice, setSyncQuotaNotice] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'idle'>('idle');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   // Subscribe to real-time user data from Firestore when logged in
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setSyncStatus('idle');
+      return;
+    }
+
+    setSyncStatus('syncing');
 
     const unsubscribe = subscribeToUserAppData(currentUser.uid, (data) => {
-      isRemoteUpdatingRef.current = true;
+      const incomingPayload = {
+        config: data.config || config,
+        accounts: data.accounts || accounts,
+        transactions: data.transactions || transactions,
+        fixedBills: data.fixedBills || fixedBills,
+        categories: data.categories || categories,
+      };
+
+      // Set lastSavedJsonRef to incoming payload to prevent snapshot feedback loops
+      lastSavedJsonRef.current = JSON.stringify(incomingPayload);
+
       if (data.config) {
         setConfig({
           ...data.config,
@@ -107,6 +139,10 @@ export default function App() {
       if (data.transactions) setTransactions(data.transactions);
       if (data.fixedBills) setFixedBills(data.fixedBills);
       if (data.categories) setCategories(data.categories);
+
+      setSyncStatus('synced');
+      setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setSyncQuotaNotice(null);
     });
 
     return () => unsubscribe();
@@ -119,11 +155,6 @@ export default function App() {
       return;
     }
 
-    if (isRemoteUpdatingRef.current) {
-      isRemoteUpdatingRef.current = false;
-      return;
-    }
-
     if (!currentUser) return;
 
     const payload = { config, accounts, transactions, fixedBills, categories };
@@ -133,13 +164,20 @@ export default function App() {
       return;
     }
 
+    setSyncStatus('syncing');
+
     const timer = setTimeout(async () => {
       lastSavedJsonRef.current = payloadJson;
       const res = await saveUserAppData(currentUser.uid, payload);
       if (res && !res.success && res.reason === 'quota') {
         setSyncQuotaNotice(res.message);
+        setSyncStatus('error');
       } else if (res && res.success) {
         setSyncQuotaNotice(null);
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      } else {
+        setSyncStatus('error');
       }
     }, 1500);
 
@@ -167,23 +205,83 @@ export default function App() {
     localStorage.setItem('luminous_v2_cats', JSON.stringify(categories));
   }, [categories]);
 
-  // Login & Logout handlers
+  // Login & Logout handlers with Cloud Merge logic
   const handleLoginWithGoogle = async (rememberMe: boolean = true) => {
     try {
+      setSyncStatus('syncing');
       const user = await loginWithGoogle(rememberMe);
       if (user) {
-        // Seed current local data to user's Firestore on login if not already populated
-        saveUserAppData(user.uid, {
-          config,
-          accounts,
-          transactions,
-          fixedBills,
-          categories,
-        });
+        // Fetch existing remote Firestore data before saving local data
+        const remoteData = await getUserAppData(user.uid);
+        if (remoteData && (remoteData.transactions?.length || remoteData.accounts?.length)) {
+          // Cloud has data! Merge local & cloud transactions by unique ID
+          const mergedTransactions = mergeTransactionsById(transactions, remoteData.transactions || []);
+          const mergedPayload = {
+            config: remoteData.config || config,
+            accounts: remoteData.accounts || accounts,
+            transactions: mergedTransactions,
+            fixedBills: remoteData.fixedBills || fixedBills,
+            categories: remoteData.categories || categories,
+          };
+          lastSavedJsonRef.current = JSON.stringify(mergedPayload);
+          if (remoteData.config) setConfig(remoteData.config);
+          if (remoteData.accounts) setAccounts(remoteData.accounts);
+          setTransactions(mergedTransactions);
+          if (remoteData.fixedBills) setFixedBills(remoteData.fixedBills);
+          if (remoteData.categories) setCategories(remoteData.categories);
+
+          await saveUserAppData(user.uid, mergedPayload);
+        } else {
+          // New cloud document: seed local data to Firestore
+          const initialPayload = { config, accounts, transactions, fixedBills, categories };
+          lastSavedJsonRef.current = JSON.stringify(initialPayload);
+          await saveUserAppData(user.uid, initialPayload);
+        }
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       }
     } catch (err) {
       console.error('Login failed:', err);
+      setSyncStatus('error');
       throw err;
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!currentUser) return;
+    try {
+      setSyncStatus('syncing');
+      const remoteData = await getUserAppData(currentUser.uid);
+      if (remoteData) {
+        const mergedTransactions = mergeTransactionsById(transactions, remoteData.transactions || []);
+        const payload = {
+          config: remoteData.config || config,
+          accounts: remoteData.accounts || accounts,
+          transactions: mergedTransactions,
+          fixedBills: remoteData.fixedBills || fixedBills,
+          categories: remoteData.categories || categories,
+        };
+        lastSavedJsonRef.current = JSON.stringify(payload);
+        if (remoteData.config) setConfig(remoteData.config);
+        if (remoteData.accounts) setAccounts(remoteData.accounts);
+        setTransactions(mergedTransactions);
+        if (remoteData.fixedBills) setFixedBills(remoteData.fixedBills);
+        if (remoteData.categories) setCategories(remoteData.categories);
+
+        await saveUserAppData(currentUser.uid, payload);
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setSyncQuotaNotice(null);
+      } else {
+        const payload = { config, accounts, transactions, fixedBills, categories };
+        lastSavedJsonRef.current = JSON.stringify(payload);
+        await saveUserAppData(currentUser.uid, payload);
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      }
+    } catch (err) {
+      console.error('Manual sync failed:', err);
+      setSyncStatus('error');
     }
   };
 
@@ -318,6 +416,9 @@ export default function App() {
         currentUser={currentUser}
         onLoginWithGoogle={handleLoginWithGoogle}
         onLogoutGoogle={handleLogoutGoogle}
+        syncStatus={syncStatus}
+        lastSyncedAt={lastSyncedAt}
+        onManualSync={handleManualSync}
       />
 
       {syncQuotaNotice && (
@@ -444,6 +545,9 @@ export default function App() {
                 currentUser={currentUser}
                 onLoginWithGoogle={handleLoginWithGoogle}
                 onLogoutGoogle={handleLogoutGoogle}
+                syncStatus={syncStatus}
+                lastSyncedAt={lastSyncedAt}
+                onManualSync={handleManualSync}
               />
             )}
           </motion.div>

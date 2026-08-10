@@ -16,6 +16,7 @@ import {
   getFirestore,
   doc,
   setDoc,
+  getDoc,
   onSnapshot,
 } from 'firebase/firestore';
 import firebaseConfigJson from '../firebase-applet-config.json';
@@ -102,6 +103,21 @@ export const subscribeToUserAppData = (
       console.warn('Firestore snapshot notice:', error?.message || error);
     }
   );
+};
+
+// Fetch user app data once from Firestore
+export const getUserAppData = async (userId: string): Promise<Partial<UserAppData> | null> => {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    const snapshot = await getDoc(userDocRef);
+    if (snapshot.exists()) {
+      return snapshot.data() as Partial<UserAppData>;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching user data from Firestore:', error);
+    return null;
+  }
 };
 
 // Save or sync user app data to Firestore
