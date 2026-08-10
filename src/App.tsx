@@ -129,16 +129,30 @@ export default function App() {
       lastSavedJsonRef.current = JSON.stringify(incomingPayload);
 
       if (data.config) {
-        setConfig({
+        const mergedConfig = {
           ...data.config,
           userName: currentUser.displayName || data.config.userName,
           userAvatar: currentUser.photoURL || data.config.userAvatar,
-        });
+        };
+        setConfig(mergedConfig);
+        localStorage.setItem('luminous_v2_config', JSON.stringify(mergedConfig));
       }
-      if (data.accounts) setAccounts(data.accounts);
-      if (data.transactions) setTransactions(data.transactions);
-      if (data.fixedBills) setFixedBills(data.fixedBills);
-      if (data.categories) setCategories(data.categories);
+      if (data.accounts) {
+        setAccounts(data.accounts);
+        localStorage.setItem('luminous_v2_accounts', JSON.stringify(data.accounts));
+      }
+      if (data.transactions) {
+        setTransactions(data.transactions);
+        localStorage.setItem('luminous_v2_txs', JSON.stringify(data.transactions));
+      }
+      if (data.fixedBills) {
+        setFixedBills(data.fixedBills);
+        localStorage.setItem('luminous_v2_bills', JSON.stringify(data.fixedBills));
+      }
+      if (data.categories) {
+        setCategories(data.categories);
+        localStorage.setItem('luminous_v2_cats', JSON.stringify(data.categories));
+      }
 
       setSyncStatus('synced');
       setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));

@@ -52,16 +52,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalledApp, setIsInstalledApp] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const [installPlatformTab, setInstallPlatformTab] = useState<'desktop' | 'android' | 'ios'>('desktop');
+
+  React.useEffect(() => {
+    setCustomSymbolInput(sym);
+  }, [sym]);
 
   React.useEffect(() => {
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      (window as any).deferredInstallPrompt = e;
     };
 
     const handleInstalled = () => {
       setIsInstalledApp(true);
       setDeferredPrompt(null);
+      (window as any).deferredInstallPrompt = null;
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -83,19 +91,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }, []);
 
   const handleTriggerPwaInstall = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setIsInstalledApp(true);
+    const activePrompt = (window as any).deferredInstallPrompt || deferredPrompt;
+    if (activePrompt) {
+      try {
+        activePrompt.prompt();
+        const { outcome } = await activePrompt.userChoice;
+        if (outcome === 'accepted') {
+          setIsInstalledApp(true);
+        }
+        (window as any).deferredInstallPrompt = null;
+        setDeferredPrompt(null);
+      } catch (err) {
+        console.error('PWA install prompt error:', err);
+        setShowInstallModal(true);
       }
-      setDeferredPrompt(null);
     } else {
-      alert(
-        'To install Luminous Finance as a standalone app on your phone:\n\n' +
-        '• Android (Chrome): Tap browser menu (⋮) -> "Install App" or "Add to Home screen"\n' +
-        '• iPhone (iOS Safari): Tap Share button (⎋) -> "Add to Home Screen"'
-      );
+      setShowInstallModal(true);
     }
   };
 
@@ -663,6 +674,233 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               >
                 <span className="material-symbols-outlined text-[16px]">restart_alt</span>
                 <span>Yes, Reset All</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PWA Standalone App Install Modal */}
+      {showInstallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl border border-[#c4c6cd]/20 flex flex-col gap-4 text-center max-h-[90vh] overflow-y-auto no-scrollbar">
+            {/* Modal Header with App Branding */}
+            <div className="flex items-center justify-between w-full border-b border-[#e1e3e4] pb-3.5">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#00476e] to-[#0082c4] p-0.5 shadow-md shrink-0">
+                  <img src="/icon-192.png" alt="Luminous Icon" className="w-full h-full object-cover rounded-[14px]" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-base sm:text-lg font-extrabold text-[#041627] tracking-tight leading-none flex items-center gap-1.5">
+                    <span>Install Luminous App</span>
+                    <span className="material-symbols-outlined text-[#006397] text-[18px]">verified</span>
+                  </h3>
+                  <span className="text-[11px] font-semibold text-[#006397] mt-0.5 block">
+                    Standalone Desktop & Mobile Experience
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowInstallModal(false)}
+                className="w-8 h-8 rounded-full bg-[#f0f4f8] hover:bg-[#e1e3e4] text-[#44474c] flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            {/* Feature Highlights Grid */}
+            <div className="grid grid-cols-3 gap-2 text-left">
+              <div className="p-2.5 rounded-xl bg-[#f0f4f8] border border-[#006397]/10 flex flex-col items-center text-center gap-1">
+                <span className="material-symbols-outlined text-[20px] text-[#006397]">bolt</span>
+                <span className="text-[10px] font-extrabold text-[#041627] leading-tight">Instant 60fps</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#f0f4f8] border border-[#006397]/10 flex flex-col items-center text-center gap-1">
+                <span className="material-symbols-outlined text-[20px] text-[#00a656]">wifi_off</span>
+                <span className="text-[10px] font-extrabold text-[#041627] leading-tight">Offline Ready</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#f0f4f8] border border-[#006397]/10 flex flex-col items-center text-center gap-1">
+                <span className="material-symbols-outlined text-[20px] text-[#6b4ea2]">open_in_new_off</span>
+                <span className="text-[10px] font-extrabold text-[#041627] leading-tight">No Address Bar</span>
+              </div>
+            </div>
+
+            {/* Platform Selector Tabs */}
+            <div className="flex bg-[#e8eaed] p-1 rounded-2xl border border-[#c4c6cd]/20">
+              <button
+                type="button"
+                onClick={() => setInstallPlatformTab('desktop')}
+                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  installPlatformTab === 'desktop'
+                    ? 'bg-[#006397] text-white shadow-xs'
+                    : 'text-[#44474c] hover:bg-[#d8dadf]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">laptop</span>
+                <span>Desktop / Laptop</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstallPlatformTab('android')}
+                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  installPlatformTab === 'android'
+                    ? 'bg-[#006397] text-white shadow-xs'
+                    : 'text-[#44474c] hover:bg-[#d8dadf]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">phone_android</span>
+                <span>Android</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstallPlatformTab('ios')}
+                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  installPlatformTab === 'ios'
+                    ? 'bg-[#006397] text-white shadow-xs'
+                    : 'text-[#44474c] hover:bg-[#d8dadf]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">phone_iphone</span>
+                <span>iPhone / iOS</span>
+              </button>
+            </div>
+
+            {/* Platform Instructions Box */}
+            <div className="p-4 rounded-2xl bg-[#f8fafc] border border-[#e2e8f0] text-left flex flex-col gap-3">
+              {installPlatformTab === 'desktop' && (
+                <>
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#006397]">
+                    <span className="material-symbols-outlined text-[18px]">desktop_windows</span>
+                    <span>Installing on Chrome, Edge or Brave (Desktop):</span>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs text-[#334155]">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        1
+                      </div>
+                      <div className="leading-relaxed">
+                        Look at your browser's address bar at the top right (next to the bookmark star icon).
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        2
+                      </div>
+                      <div className="leading-relaxed">
+                        Click the native <strong className="text-[#006397] bg-[#e0f2fe] px-1.5 py-0.5 rounded border border-[#bae6fd]">Install [⨁]</strong> button or click <strong>Install</strong> on the Chrome prompt popup.
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        3
+                      </div>
+                      <div className="leading-relaxed">
+                        Luminous Finance will launch in its own native app window on your taskbar/dock!
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {installPlatformTab === 'android' && (
+                <>
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#006397]">
+                    <span className="material-symbols-outlined text-[18px]">android</span>
+                    <span>Installing on Android Phone (Chrome):</span>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs text-[#334155]">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        1
+                      </div>
+                      <div className="leading-relaxed">
+                        Tap the Chrome menu icon <strong className="text-[#006397] bg-[#e0f2fe] px-1.5 py-0.5 rounded">(⋮)</strong> at the top right of your mobile screen.
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        2
+                      </div>
+                      <div className="leading-relaxed">
+                        Select <strong className="text-[#006397]">"Install app"</strong> or <strong className="text-[#006397]">"Add to Home screen"</strong>.
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        3
+                      </div>
+                      <div className="leading-relaxed">
+                        Tap <strong>Add</strong> to confirm and launch Luminous from your app drawer!
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {installPlatformTab === 'ios' && (
+                <>
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#006397]">
+                    <span className="material-symbols-outlined text-[18px]">phone_iphone</span>
+                    <span>Installing on iPhone / iPad (Safari):</span>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs text-[#334155]">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        1
+                      </div>
+                      <div className="leading-relaxed">
+                        Tap Safari's <strong className="text-[#006397] bg-[#e0f2fe] px-1.5 py-0.5 rounded">Share button (⎋)</strong> at the bottom center of your iPhone screen.
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        2
+                      </div>
+                      <div className="leading-relaxed">
+                        Scroll down the action list and tap <strong className="text-[#006397]">"Add to Home Screen"</strong>.
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[#006397] text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                        3
+                      </div>
+                      <div className="leading-relaxed">
+                        Tap <strong>Add</strong> at top right to place the native icon on your home screen!
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const activePrompt = (window as any).deferredInstallPrompt || deferredPrompt;
+                  if (activePrompt) {
+                    try {
+                      activePrompt.prompt();
+                    } catch (err) {
+                      console.error('PWA prompt error:', err);
+                    }
+                  }
+                  setShowInstallModal(false);
+                }}
+                className="flex-1 py-3 px-4 bg-gradient-to-r from-[#00476e] via-[#006397] to-[#0082c4] text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer border border-white/20"
+              >
+                <span className="material-symbols-outlined text-[18px]">download_for_offline</span>
+                <span>Trigger Browser Install Prompt</span>
               </button>
             </div>
           </div>

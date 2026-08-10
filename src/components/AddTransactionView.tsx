@@ -478,6 +478,54 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     setDisplayExpr((prev) => prev + key);
   };
 
+  // Listen for physical keyboard input on laptop/desktop
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl?.getAttribute('contenteditable') === 'true';
+
+      // If active element is a different input (e.g. memo or tag or modal search), don't intercept keypresses
+      if (isInput && activeEl?.id !== 'amount-display-input') {
+        return;
+      }
+
+      if (e.key >= '0' && e.key <= '9') {
+        if (activeEl?.id !== 'amount-display-input') {
+          handleKeyPress(e.key);
+        }
+      } else if (e.key === '.' || e.key === ',') {
+        if (activeEl?.id !== 'amount-display-input') {
+          handleKeyPress('.');
+        }
+      } else if (e.key === '+') {
+        handleKeyPress('+');
+      } else if (e.key === '-') {
+        handleKeyPress('−');
+      } else if (e.key === '*' || e.key === 'x' || e.key === 'X') {
+        handleKeyPress('×');
+      } else if (e.key === '/') {
+        handleKeyPress('÷');
+      } else if (e.key === 'Backspace') {
+        if (activeEl?.id !== 'amount-display-input') {
+          handleKeyPress('backspace');
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSave();
+      } else if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') {
+        if (activeEl?.id !== 'amount-display-input') {
+          handleKeyPress('C');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [displayExpr, memo, person, selectedCategory, txType, txDate, selectedAccountId, selectedToAccountId]);
+
   const handleSave = () => {
     const finalAmount = calculatedValue > 0 ? calculatedValue : parseFloat(displayExpr) || 0;
     if (finalAmount <= 0) return;
@@ -629,8 +677,23 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
       {/* Amount & Memo Display Card */}
       <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-sm border border-[#c4c6cd]/20 flex flex-col gap-2 sm:gap-2.5 shrink-0">
         <div className="flex flex-col text-right">
-          <div className="text-2xl sm:text-3xl font-extrabold text-[#041627] tracking-tight overflow-x-auto no-scrollbar whitespace-nowrap leading-tight py-0.5 min-h-[36px]">
-            {displayExpr || <span className="text-[#c4c6cd]">0</span>}
+          <div className="relative flex items-center justify-end">
+            <input
+              id="amount-display-input"
+              type="text"
+              inputMode="decimal"
+              value={displayExpr}
+              onChange={(e) => setDisplayExpr(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSave();
+                }
+              }}
+              placeholder="0"
+              className="w-full text-right text-2xl sm:text-3xl font-extrabold text-[#041627] tracking-tight bg-transparent border-none p-0 focus:outline-none focus:ring-0 placeholder:text-[#c4c6cd] py-0.5 min-h-[36px] cursor-text"
+              autoFocus
+            />
           </div>
           <div className="text-xs sm:text-sm font-semibold text-[#006397]">
             = {sym}{calculatedValue.toFixed(2)}

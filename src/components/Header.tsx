@@ -61,13 +61,20 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setIsStandaloneApp(true);
+    const activePrompt = (window as any).deferredInstallPrompt || deferredPrompt;
+    if (activePrompt) {
+      try {
+        activePrompt.prompt();
+        const { outcome } = await activePrompt.userChoice;
+        if (outcome === 'accepted') {
+          setIsStandaloneApp(true);
+        }
+        (window as any).deferredInstallPrompt = null;
+        setDeferredPrompt(null);
+      } catch (err) {
+        console.error('PWA install error:', err);
+        setActiveTab('profile');
       }
-      setDeferredPrompt(null);
     } else {
       setActiveTab('profile');
     }
