@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email"]
+    },
+    "transactions": {
+      "title": "Transactions",
+      "description": "Financial ledger entries for the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "memo": { "type": "string" },
+        "payee": { "type": "string" },
+        "accountId": { "type": "string" }
+      },
+      "required": ["type", "amount", "date"]
+    },
+    "accounts": {
+      "title": "Accounts",
+      "description": "User bank and wallet accounts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "balance": { "type": "number" }
+      },
+      "required": ["name", "type"]
+    },
+    "categories": {
+      "title": "Categories",
+      "description": "Category settings and budget targets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "icon": { "type": "string" },
+        "color": { "type": "string" },
+        "type": { "type": "string" },
+        "budgetLimit": { "type": "number" }
+      },
+      "required": ["name"]
+    }
+  }
+}

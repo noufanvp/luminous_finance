@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#006397" />
+      <stop offset="100%" stop-color="#003452" />
+    </linearGradient>
+    <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5cb8fd" />
+      <stop offset="100%" stop-color="#ffffff" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <g transform="translate(256, 256)">
+    <!-- Star/Spark icon -->
+    <path d="M 0 -140 Q 0 0 -140 0 Q 0 0 0 140 Q 0 0 140 0 Q 0 0 0 -140 Z" fill="url(#starGrad)" />
+    <!-- Center glowing core -->
+    <circle r="28" fill="#ffffff" />
+  </g>
+</svg>

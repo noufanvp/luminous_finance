@@ -1,0 +1,6 @@
+{
+  "name": "Luminous Finance",
+  "description": "Smart personal finance app with dynamic daily pacing, instant calculator transaction logging, fixed bills management, and ledger analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
