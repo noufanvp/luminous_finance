@@ -141,82 +141,64 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         </div>
       </div>
 
-      {/* FEATURE BANNER: Monthly Rolling Daily Budget Allocation Overview */}
-      <section className="bg-gradient-to-r from-[#041627] via-[#003355] to-[#00476e] text-white rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden border border-[#006397]/40">
-        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-[#5cb8fd]/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="bg-[#5cb8fd]/20 text-[#5cb8fd] text-[10px] uppercase font-extrabold px-2.5 py-1 rounded-full border border-[#5cb8fd]/30 tracking-wider flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
-                Monthly Rolling Daily Allocation
-              </span>
-              <span className="bg-white/10 text-white/90 text-[11px] font-mono px-2.5 py-0.5 rounded-full border border-white/15">
-                Cycle: {cycleInfo.formattedCycleRange} (Day {cycleInfo.elapsedDays}/{cycleInfo.totalDaysInCycle})
-              </span>
-            </div>
-
-            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              Real-Time "Available to Spend Today" Engine
-            </h2>
-            <p className="text-xs sm:text-sm text-[#c4c6cd] leading-relaxed">
-              Splits your monthly budget equally across active cycle days (<span className="font-bold text-white">{cycleInfo.totalDaysInCycle} days total</span>) and automatically rolls unspent daily balance into a real-time spending pool.
-            </p>
+      {/* Rolling Daily Budget & Pool Metric Cards Grid */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Card 1: Total Net Daily Available (After 'Others' Deducted) */}
+        <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
+              Net Available Per Day
+            </span>
+            <span className="text-xs text-[#74777d] font-mono">
+              Cycle: {cycleInfo.formattedCycleRange} (Day {cycleInfo.elapsedDays}/{cycleInfo.totalDaysInCycle})
+            </span>
           </div>
 
-          {/* Combined Daily Available & Rolling Summary Cards */}
-          <div className="flex flex-col sm:flex-row items-stretch gap-4 shrink-0">
-            {/* Card 1: Total Net Daily Available (After 'Others' Deducted) */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex flex-col justify-between shrink-0 min-w-[220px]">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#92ccff] block">
-                  Net Available Per Day
-                </span>
-                <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className={`text-2xl sm:text-3xl font-black ${netDailyAvailablePerDay >= 0 ? 'text-[#00a656]' : 'text-[#ffb4ab]'}`}>
-                    {sym}{netDailyAvailablePerDay.toFixed(2)}
-                  </span>
-                  <span className="text-xs text-[#c4c6cd]">/day</span>
-                </div>
-              </div>
-
-              {/* Deduction Breakdown Pill */}
-              <div className="mt-2.5 pt-2 border-t border-white/15 text-[10px] space-y-0.5">
-                <div className="flex justify-between text-[#c4c6cd]">
-                  <span>Gross Target:</span>
-                  <span className="font-mono text-white font-bold">{sym}{grossDailyTarget.toFixed(2)}/day</span>
-                </div>
-                <div className="flex justify-between text-[#ffb4ab]">
-                  <span>Less 'Others' Spent ({sym}{otherSpent.toFixed(0)}):</span>
-                  <span className="font-mono font-bold">-{sym}{dailyOthersDeduction.toFixed(2)}/day</span>
-                </div>
-              </div>
+          <div className="my-2">
+            <div className="flex items-baseline gap-1">
+              <span className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${netDailyAvailablePerDay >= 0 ? 'text-[#00a656]' : 'text-[#ba1a1a]'}`}>
+                {sym}{netDailyAvailablePerDay.toFixed(2)}
+              </span>
+              <span className="text-xs text-[#74777d]">/day</span>
             </div>
+          </div>
 
-            {/* Card 2: Rolling Daily Pool Summary */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex flex-col justify-between shrink-0 min-w-[200px]">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#92ccff] block">
-                  Rolling Pool Today
-                </span>
-                <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className={`text-2xl sm:text-3xl font-black ${totalRollingAvailableToday >= 0 ? 'text-[#00a656]' : 'text-[#ffb4ab]'}`}>
-                    {totalRollingAvailableToday >= 0 ? `+${sym}${totalRollingAvailableToday.toFixed(2)}` : `-${sym}${Math.abs(totalRollingAvailableToday).toFixed(2)}`}
-                  </span>
-                </div>
-                <span className="text-[10px] text-[#c4c6cd] block mt-0.5">
-                  Base Pace: <strong className="text-white font-mono">{sym}{totalRollingBaseRate.toFixed(2)}/day</strong>
-                </span>
-              </div>
-
-              <div className="mt-2 pt-2 border-t border-white/15 flex justify-between items-center text-[10px]">
-                <span className="text-[#c4c6cd]">Net after 'Others':</span>
-                <span className={`font-mono font-extrabold ${netRollingAvailableToday >= 0 ? 'text-[#00a656]' : 'text-[#ffb4ab]'}`}>
-                  {netRollingAvailableToday >= 0 ? `+${sym}${netRollingAvailableToday.toFixed(2)}` : `-${sym}${Math.abs(netRollingAvailableToday).toFixed(2)}`}
-                </span>
-              </div>
+          <div className="pt-2.5 border-t border-[#f0f4f8] text-xs space-y-1">
+            <div className="flex justify-between text-[#44474c]">
+              <span>Gross Target:</span>
+              <span className="font-mono text-[#191c1d] font-bold">{sym}{grossDailyTarget.toFixed(2)}/day</span>
             </div>
+            <div className="flex justify-between text-[#ba1a1a]">
+              <span>Less 'Others' Spent ({sym}{otherSpent.toFixed(0)}):</span>
+              <span className="font-mono font-bold">-{sym}{dailyOthersDeduction.toFixed(2)}/day</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Rolling Daily Pool Summary */}
+        <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
+              Rolling Pool Today
+            </span>
+            <span className="text-xs text-[#74777d]">
+              Base Pace: <strong className="text-[#191c1d] font-mono">{sym}{totalRollingBaseRate.toFixed(2)}/day</strong>
+            </span>
+          </div>
+
+          <div className="my-2">
+            <div className="flex items-baseline gap-1">
+              <span className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${totalRollingAvailableToday >= 0 ? 'text-[#00a656]' : 'text-[#ba1a1a]'}`}>
+                {totalRollingAvailableToday >= 0 ? `+${sym}${totalRollingAvailableToday.toFixed(2)}` : `-${sym}${Math.abs(totalRollingAvailableToday).toFixed(2)}`}
+              </span>
+            </div>
+          </div>
+
+          <div className="pt-2.5 border-t border-[#f0f4f8] flex justify-between items-center text-xs">
+            <span className="text-[#74777d]">Net after 'Others':</span>
+            <span className={`font-mono font-bold ${netRollingAvailableToday >= 0 ? 'text-[#00a656]' : 'text-[#ba1a1a]'}`}>
+              {netRollingAvailableToday >= 0 ? `+${sym}${netRollingAvailableToday.toFixed(2)}` : `-${sym}${Math.abs(netRollingAvailableToday).toFixed(2)}`}
+            </span>
           </div>
         </div>
       </section>

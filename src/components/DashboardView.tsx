@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction, CategoryTemplate, BudgetConfig, TabType, BankAccount, FixedBill } from '../types';
-import { calculateSummary, getCategoryBreakdown } from '../utils/finance';
+import { calculateSummary, getCategoryBreakdown, getAccountBalances } from '../utils/finance';
 
 interface DashboardViewProps {
   transactions: Transaction[];
@@ -47,20 +47,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Currency Symbol
   const sym = config.currencySymbol || '$';
 
-  // Time-of-day greeting
-  const hour = new Date().getHours();
-  const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const userName = currentUser?.displayName || config.userName || 'Finance Lead';
-  const userAvatar = currentUser?.photoURL || config.userAvatar;
+  // Account Balances Metrics (Dynamic real-time balance incorporating income, expenses, and transfers)
+  const accountBalancesList = getAccountBalances(accounts, transactions);
+  const accountBalancesMap: Record<string, number> = {};
+  accountBalancesList.forEach((ab) => {
+    accountBalancesMap[ab.id] = ab.currentBalance;
+  });
 
-  // Account Balances Metrics
   const liquidAccounts = accounts.filter((a) => !a.excludeFromTotal && a.type !== 'credit');
-  const creditAccounts = accounts.filter((a) => a.type === 'credit');
+  const creditAccounts = accounts.filter((a) => !a.excludeFromTotal && a.type === 'credit');
 
-  const totalLiquidCash = liquidAccounts.reduce((sum, a) => sum + a.balance, 0);
-  const totalCreditDebt = creditAccounts.reduce((sum, a) => sum + Math.abs(a.balance), 0);
+  const totalLiquidCash = liquidAccounts.reduce((sum, a) => sum + (accountBalancesMap[a.id] ?? a.balance), 0);
+  const totalCreditDebt = creditAccounts.reduce((sum, a) => sum + Math.abs(accountBalancesMap[a.id] ?? a.balance), 0);
   const totalNetWorth = accounts.length > 0
-    ? accounts.reduce((sum, a) => a.excludeFromTotal ? sum : (a.type === 'credit' ? sum - Math.abs(a.balance) : sum + a.balance), 0)
+    ? totalLiquidCash - totalCreditDebt
     : (summary.totalIncome - summary.totalExpenses);
 
   // SVG Pacing Ring
@@ -120,82 +120,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 flex flex-col gap-5 sm:gap-6">
-      
-      {/* ==================== EXECUTIVE HEADER & QUICK ACTIONS BANNER ==================== */}
-      <section className="bg-gradient-to-r from-[#041627] via-[#003354] to-[#006397] text-white rounded-3xl p-5 sm:p-6 shadow-md relative overflow-hidden">
-        {/* Subtle Background Glow Elements */}
-        <div className="absolute -top-16 -right-16 w-56 h-56 bg-[#5cb8fd]/20 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-[#00a656]/20 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#9eceff] bg-white/10 px-2.5 py-0.5 rounded-full backdrop-blur-xs">
-                Smart Financial Hub
-              </span>
-              <span className="text-xs text-white/70 font-medium">
-                • {daysLeft} days left in cycle
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              {userAvatar && (
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white/30 shadow-md overflow-hidden shrink-0 bg-white/10">
-                  <img
-                    src={userAvatar}
-                    alt="User Profile"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              )}
-              <div>
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight">
-                  {timeGreeting}, {userName}! 👋
-                </h1>
-              </div>
-            </div>
-            <p className="text-xs sm:text-sm text-[#d2e4fb] mt-1 max-w-xl font-medium leading-relaxed">
-              You have <strong className="text-white font-bold">{sym}{summary.remaining.toLocaleString('en-US')}</strong> remaining out of your {sym}{summary.monthlyTarget.toLocaleString('en-US')} monthly target with a smart allowance of <strong className="text-[#32f28d] font-bold">{sym}{summary.dailyAllowance.toFixed(2)}/day</strong>.
-            </p>
-          </div>
-
-          {/* Quick Action Buttons Toolbar */}
-          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-white/15">
-            <button
-              onClick={() => setActiveTab('add')}
-              className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl bg-[#00a656] hover:bg-[#008243] text-white text-xs sm:text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[18px]">add_circle</span>
-              <span>Log Expense</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('accounts')}
-              className="flex-1 sm:flex-none px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-semibold border border-white/20 backdrop-blur-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[18px]">account_balance</span>
-              <span>Accounts</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('reports')}
-              className="flex-1 sm:flex-none px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-semibold border border-white/20 backdrop-blur-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[18px]">insights</span>
-              <span>Analytics</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('budgets')}
-              className="flex-1 sm:flex-none px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-semibold border border-white/20 backdrop-blur-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[18px]">tune</span>
-              <span>Budgets</span>
-            </button>
-          </div>
-        </div>
-      </section>
-
       {/* ==================== TOP KEY METRICS CARDS GRID ==================== */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Metric 1: Total Net Worth / Balance */}
@@ -213,13 +137,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </span>
           </div>
           <span className="text-xs font-semibold text-[#44474c] uppercase tracking-wider block">Net Account Liquidity</span>
-          <p className="text-xl sm:text-2xl font-extrabold text-[#041627] mt-1 tracking-tight">
-            {sym}{totalNetWorth.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          <p className={`text-xl sm:text-2xl font-extrabold mt-1 tracking-tight ${totalNetWorth < 0 ? 'text-[#ba1a1a]' : 'text-[#041627]'}`}>
+            {totalNetWorth < 0 ? '-' : ''}{sym}{Math.abs(totalNetWorth).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
           <div className="flex items-center justify-between text-[11px] text-[#74777d] mt-2 pt-2 border-t border-[#f0f4f8]">
-            <span>Cash: <strong className="text-[#00a656]">{sym}{totalLiquidCash.toLocaleString()}</strong></span>
+            <span>Cash: <strong className="text-[#00a656]">{sym}{totalLiquidCash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             {totalCreditDebt > 0 && (
-              <span>Credit: <strong className="text-[#ba1a1a]">-{sym}{totalCreditDebt.toLocaleString()}</strong></span>
+              <span>Credit: <strong className="text-[#ba1a1a]">-{sym}{totalCreditDebt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             )}
           </div>
         </div>
@@ -630,36 +554,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <p className="text-xs text-[#74777d] italic py-2">No bank accounts linked yet.</p>
             ) : (
               <div className="flex flex-col gap-2.5">
-                {accounts.map((acc) => (
-                  <div
-                    key={acc.id}
-                    onClick={() => setActiveTab('accounts')}
-                    className="p-3 rounded-2xl bg-[#f8f9fa] border border-[#e1e3e4] hover:bg-[#f0f4f8] transition-all cursor-pointer flex items-center justify-between gap-3"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-2xs"
-                        style={{ backgroundColor: acc.color || '#006397' }}
-                      >
-                        <span className="material-symbols-outlined text-[18px]">{acc.icon || 'account_balance'}</span>
+                {accounts.map((acc) => {
+                  const currentBal = accountBalancesMap[acc.id] ?? acc.balance;
+                  const isCredit = acc.type === 'credit';
+                  return (
+                    <div
+                      key={acc.id}
+                      onClick={() => setActiveTab('accounts')}
+                      className="p-3 rounded-2xl bg-[#f8f9fa] border border-[#e1e3e4] hover:bg-[#f0f4f8] transition-all cursor-pointer flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-2xs"
+                          style={{ backgroundColor: acc.color || '#006397' }}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">{acc.icon || 'account_balance'}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-[#041627] truncate">{acc.name}</h4>
+                          <span className="text-[10px] text-[#44474c] font-medium capitalize block">
+                            {acc.institution ? `${acc.institution} • ` : ''}{acc.type}
+                            {acc.excludeFromTotal && ' • Excluded'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-[#041627] truncate">{acc.name}</h4>
-                        <span className="text-[10px] text-[#44474c] font-medium capitalize block">
-                          {acc.institution ? `${acc.institution} • ` : ''}{acc.type}
+
+                      <div className="text-right shrink-0">
+                        <span className={`text-xs sm:text-sm font-extrabold font-mono block ${
+                          isCredit ? 'text-[#ba1a1a]' : currentBal < 0 ? 'text-[#ba1a1a]' : 'text-[#041627]'
+                        }`}>
+                          {isCredit && currentBal > 0 ? '-' : ''}{currentBal < 0 ? '-' : ''}{sym}{Math.abs(currentBal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </div>
-
-                    <div className="text-right shrink-0">
-                      <span className={`text-xs sm:text-sm font-extrabold font-mono block ${
-                        acc.type === 'credit' ? 'text-[#ba1a1a]' : 'text-[#041627]'
-                      }`}>
-                        {acc.type === 'credit' && acc.balance > 0 ? '-' : ''}{sym}{Math.abs(acc.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

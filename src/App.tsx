@@ -19,6 +19,7 @@ import { AccountsView } from './components/AccountsView';
 import { ReportsView } from './components/ReportsView';
 import { ProfileView } from './components/ProfileView';
 import { LoginView } from './components/LoginView';
+import { SplashLoader } from './components/SplashLoader';
 
 import { getCategoryBreakdown } from './utils/finance';
 import {
@@ -48,7 +49,10 @@ function mergeTransactionsById(local: Transaction[], remote: Transaction[]): Tra
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [guestMode, setGuestMode] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [guestMode, setGuestMode] = useState<boolean>(() => {
+    return localStorage.getItem('luminous_guest_mode') === 'true';
+  });
 
   // Scroll to top of the page when activeTab changes
   useEffect(() => {
@@ -97,6 +101,7 @@ export default function App() {
           userAvatar: user.photoURL || prevConfig.userAvatar,
         }));
       }
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -299,8 +304,15 @@ export default function App() {
     }
   };
 
+  const handleGuestContinue = () => {
+    localStorage.setItem('luminous_guest_mode', 'true');
+    setGuestMode(true);
+  };
+
   const handleLogoutGoogle = async () => {
     try {
+      localStorage.removeItem('luminous_guest_mode');
+      setGuestMode(false);
       await logoutGoogle();
     } catch (err) {
       console.error('Logout failed:', err);
@@ -409,11 +421,17 @@ export default function App() {
     localStorage.clear();
   };
 
+  // While Firebase is verifying the persisted session on startup, show the animated splash screen
+  if (authLoading) {
+    return <SplashLoader />;
+  }
+
+  // If no logged in user and not in guest mode, show the login screen
   if (!currentUser && !guestMode) {
     return (
       <LoginView
         onLoginWithGoogle={handleLoginWithGoogle}
-        onGuestContinue={() => setGuestMode(true)}
+        onGuestContinue={handleGuestContinue}
       />
     );
   }
