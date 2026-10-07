@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BankAccount, Transaction } from '../types';
-import { getAccountBalances } from '../utils/finance';
+import { getAccountBalances, normalizeTransactionDate } from '../utils/finance';
 
 interface TransferMoneyModalProps {
   isOpen: boolean;
@@ -618,7 +618,7 @@ export const TransferMoneyModal: React.FC<TransferMoneyModalProps> = ({
       fromAccountId,
       toAccountId,
       amount: parsedAmount,
-      date: dateType,
+      date: normalizeTransactionDate(dateType),
       memo: memo.trim() || undefined,
     });
 

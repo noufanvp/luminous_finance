@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Transaction, TabType, BudgetConfig, CategoryTemplate, TransactionType, BankAccount } from '../types';
 import { CustomDateRangePicker } from './CustomDateRangePicker';
 import { ImportTransactionsModal } from './ImportTransactionsModal';
+import { normalizeTransactionDate, parseTransactionDate } from '../utils/finance';
 
 interface LedgerViewProps {
   transactions: Transaction[];
@@ -17,83 +18,34 @@ interface LedgerViewProps {
 
 // Helper to safely parse any transaction date string into a Date object
 const parseTxDate = (dateStr: string): Date => {
-  if (!dateStr) return new Date();
-  const lower = dateStr.toLowerCase().trim();
-  const now = new Date();
-  
-  if (lower === 'today') return now;
-  if (lower === 'yesterday') {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 1);
-    return d;
-  }
-  const daysAgoMatch = lower.match(/^(\d+)\s*days?\s*ago$/);
-  if (daysAgoMatch) {
-    const days = parseInt(daysAgoMatch[1], 10);
-    const d = new Date(now);
-    d.setDate(d.getDate() - days);
-    return d;
-  }
-
-  // Handle ISO format YYYY-MM-DD specifically to avoid UTC shift
-  const ymdMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (ymdMatch) {
-    const year = parseInt(ymdMatch[1], 10);
-    const month = parseInt(ymdMatch[2], 10) - 1;
-    const day = parseInt(ymdMatch[3], 10);
-    return new Date(year, month, day);
-  }
-
-  const parsed = new Date(dateStr);
-  if (!isNaN(parsed.getTime())) return parsed;
-  return now;
+  return parseTransactionDate(dateStr);
 };
 
+const isSameDay = (d1: Date, d2: Date) =>
+  d1.getFullYear() === d2.getFullYear() &&
+  d1.getMonth() === d2.getMonth() &&
+  d1.getDate() === d2.getDate();
+
 const formatDisplayDateHeader = (dateStr: string, txDate: Date): string => {
-  const lower = dateStr.toLowerCase().trim();
-  if (lower === 'today' || lower === 'yesterday') {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (isSameDay(txDate, now)) {
     const dateFormatted = txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return lower === 'today' ? `Today (${dateFormatted})` : `Yesterday (${dateFormatted})`;
+    return `Today (${dateFormatted})`;
   }
-  if (lower.includes('days ago')) {
-    return txDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  if (isSameDay(txDate, yesterday)) {
+    const dateFormatted = txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `Yesterday (${dateFormatted})`;
   }
   return txDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 };
 
 const getExactDateDisplay = (dateStr: string) => {
   if (!dateStr) return '';
-  const trimmed = dateStr.trim();
-  const lower = trimmed.toLowerCase();
-  const now = new Date();
-
-  let targetDate = new Date();
-
-  if (lower === 'today') {
-    targetDate = new Date(now);
-  } else if (lower === 'yesterday') {
-    targetDate = new Date(now);
-    targetDate.setDate(now.getDate() - 1);
-  } else {
-    const daysAgoMatch = lower.match(/^(\d+)\s*days?\s*ago$/);
-    if (daysAgoMatch) {
-      const days = parseInt(daysAgoMatch[1], 10);
-      targetDate = new Date(now);
-      targetDate.setDate(now.getDate() - days);
-    } else {
-      const parsed = new Date(trimmed);
-      if (!isNaN(parsed.getTime())) {
-        return parsed.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-      }
-      return '';
-    }
-  }
-
-  return targetDate.toLocaleDateString('en-US', {
+  const txDate = parseTxDate(dateStr);
+  return txDate.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -102,12 +54,24 @@ const getExactDateDisplay = (dateStr: string) => {
 
 const getDisplayDateString = (dateStr: string) => {
   if (!dateStr) return '';
-  const exact = getExactDateDisplay(dateStr);
-  if (!exact) return dateStr;
-  if (dateStr.toLowerCase().includes(exact.toLowerCase())) {
-    return dateStr;
+  const txDate = parseTxDate(dateStr);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (isSameDay(txDate, now)) {
+    const dateFormatted = txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `Today (${dateFormatted})`;
   }
-  return `${dateStr} (${exact})`;
+  if (isSameDay(txDate, yesterday)) {
+    const dateFormatted = txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `Yesterday (${dateFormatted})`;
+  }
+  return txDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 };
 
 export const LedgerView: React.FC<LedgerViewProps> = ({
@@ -374,7 +338,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       person: personText || undefined,
       payee: personText || undefined,
       tag: personText || undefined,
-      date: editForm.date.trim() || 'Today',
+      date: normalizeTransactionDate(editForm.date),
     };
 
     onUpdateTransaction(selectedTx.id, updated);

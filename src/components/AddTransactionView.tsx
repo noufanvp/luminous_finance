@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Transaction, CategoryTemplate, TransactionType, TabType, BudgetConfig, BankAccount } from '../types';
 import { INITIAL_TRANSACTIONS } from '../data/initialData';
-import { getCategoryBreakdown, getRollingDailyCategoryPacing } from '../utils/finance';
+import { getCategoryBreakdown, getRollingDailyCategoryPacing, normalizeTransactionDate, getIsoDateString } from '../utils/finance';
 import { AddCategoryModal } from './AddCategoryModal';
 import { CategorySettingsModal } from './CategorySettingsModal';
 import { AiQuickLogModal } from './AiQuickLogModal';
@@ -50,9 +50,12 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
   const [selectedToAccountId, setSelectedToAccountId] = useState<string>(
     editingTransaction?.toAccountId || accounts[1]?.id || accounts[0]?.id || ''
   );
-  const [txDate, setTxDate] = useState<string>(
-    editingTransaction?.date || 'Today'
-  );
+  const [txDate, setTxDate] = useState<string>(() => {
+    if (editingTransaction?.date) {
+      return normalizeTransactionDate(editingTransaction.date);
+    }
+    return getIsoDateString();
+  });
   const [displayExpr, setDisplayExpr] = useState<string>(
     editingTransaction
       ? editingTransaction.rawExpression || editingTransaction.amount.toString()
@@ -264,29 +267,18 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     return () => clearTimeout(timer);
   }, [selectedCategory, showAllCategoriesModal]);
 
+  const todayIso = getIsoDateString();
+  const yesterdayIso = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return getIsoDateString(d);
+  })();
+
   const getFormattedDateValue = (dateStr: string): string => {
-    if (!dateStr) return new Date().toISOString().split('T')[0];
-    const lower = dateStr.toLowerCase().trim();
-    const now = new Date();
-    if (lower === 'today') {
-      return now.toISOString().split('T')[0];
-    }
-    if (lower === 'yesterday') {
-      const yesterday = new Date(now);
-      yesterday.setDate(now.getDate() - 1);
-      return yesterday.toISOString().split('T')[0];
-    }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      return dateStr;
-    }
-    const parsed = new Date(dateStr);
-    if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString().split('T')[0];
-    }
-    return now.toISOString().split('T')[0];
+    return normalizeTransactionDate(dateStr);
   };
 
-  const initialIso = getFormattedDateValue(txDate);
+  const initialIso = normalizeTransactionDate(txDate);
   const initialDateObj = new Date(initialIso + 'T00:00:00');
 
   const [calYear, setCalYear] = useState<number>(
@@ -324,9 +316,15 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
   }, [showAllCategoriesModal]);
 
   const formatDisplayDate = (dateStr: string): string => {
-    if (!dateStr || dateStr === 'Today') return 'Today';
-    if (dateStr === 'Yesterday') return 'Yesterday';
-    const isoStr = getFormattedDateValue(dateStr);
+    const isoStr = normalizeTransactionDate(dateStr);
+    const nowIso = getIsoDateString();
+    const yest = new Date();
+    yest.setDate(yest.getDate() - 1);
+    const yestIso = getIsoDateString(yest);
+
+    if (isoStr === nowIso) return 'Today';
+    if (isoStr === yestIso) return 'Yesterday';
+
     const parsed = new Date(isoStr + 'T00:00:00');
     if (!isNaN(parsed.getTime())) {
       return parsed.toLocaleDateString('en-US', {
@@ -377,20 +375,10 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
 
   const handleSelectDay = (day: number) => {
     const selectedIso = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const todayIso = new Date().toISOString().split('T')[0];
-    if (selectedIso > todayIso) return;
-
-    const yesterdayObj = new Date();
-    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-    const yesterdayIso = yesterdayObj.toISOString().split('T')[0];
-
-    if (selectedIso === todayIso) {
-      setTxDate('Today');
-    } else if (selectedIso === yesterdayIso) {
-      setTxDate('Yesterday');
-    } else {
-      setTxDate(selectedIso);
-    }
+    const nowIso = getIsoDateString();
+    if (selectedIso > nowIso) return;
+    setTxDate(selectedIso);
+    setShowDatePickerModal(false);
   };
 
   const MONTH_NAMES = [
@@ -441,7 +429,8 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
   const handleResetAll = () => {
     setDisplayExpr('');
     setMemo('');
-    setTxDate('Today');
+    setPerson('');
+    setTxDate(getIsoDateString());
     setTxType('expense');
     setSelectedCategory(categories.length > 0 ? categories[0].name : 'Groceries');
   };
@@ -533,13 +522,15 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     const memoText = memo.trim();
     const personText = person.trim();
 
+    const finalDate = normalizeTransactionDate(txDate);
+
     if (isEditMode && editingTransaction && onUpdateTransaction) {
       onUpdateTransaction(editingTransaction.id, {
         type: txType,
         category: txType === 'transfer' ? 'Transfer' : selectedCategory,
         title: txType === 'transfer' ? 'Account Transfer' : selectedCategory,
         amount: finalAmount,
-        date: txDate,
+        date: finalDate,
         memo: memoText,
         person: personText || undefined,
         payee: personText || undefined,
@@ -558,7 +549,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         category: txType === 'transfer' ? 'Transfer' : selectedCategory,
         title: txType === 'transfer' ? 'Account Transfer' : selectedCategory,
         amount: finalAmount,
-        date: txDate || 'Today',
+        date: finalDate,
         memo: memoText,
         person: personText || undefined,
         payee: personText || undefined,
@@ -812,9 +803,9 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
             <button
               type="button"
-              onClick={() => setTxDate('Today')}
+              onClick={() => setTxDate(todayIso)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                txDate === 'Today'
+                txDate === todayIso
                   ? 'bg-[#006397] text-white shadow-xs'
                   : 'bg-[#f0f2f5] text-[#44474c] hover:bg-[#e4e7ec]'
               }`}
@@ -823,9 +814,9 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setTxDate('Yesterday')}
+              onClick={() => setTxDate(yesterdayIso)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                txDate === 'Yesterday'
+                txDate === yesterdayIso
                   ? 'bg-[#006397] text-white shadow-xs'
                   : 'bg-[#f0f2f5] text-[#44474c] hover:bg-[#e4e7ec]'
               }`}
@@ -835,7 +826,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const curIso = getFormattedDateValue(txDate);
+                const curIso = normalizeTransactionDate(txDate);
                 const curObj = new Date(curIso + 'T00:00:00');
                 if (!isNaN(curObj.getTime())) {
                   setCalYear(curObj.getFullYear());
@@ -844,18 +835,18 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                 setShowDatePickerModal(true);
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 flex items-center gap-1 border ${
-                txDate !== 'Today' && txDate !== 'Yesterday'
+                txDate !== todayIso && txDate !== yesterdayIso
                   ? 'bg-[#006397] text-white border-[#006397] shadow-xs'
                   : 'bg-white text-[#006397] border-[#006397]/30 hover:bg-[#e3f2fd]'
               }`}
             >
               <span>
-                {txDate !== 'Today' && txDate !== 'Yesterday'
+                {txDate !== todayIso && txDate !== yesterdayIso
                   ? formatDisplayDate(txDate)
                   : 'Pick Date'}
               </span>
               <span className="material-symbols-outlined text-[15px]">
-                {txDate !== 'Today' && txDate !== 'Yesterday' ? 'edit_calendar' : 'calendar_month'}
+                {txDate !== todayIso && txDate !== yesterdayIso ? 'edit_calendar' : 'calendar_month'}
               </span>
             </button>
           </div>

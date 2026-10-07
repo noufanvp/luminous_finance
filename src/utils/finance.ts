@@ -251,6 +251,43 @@ export interface BillingCycleInfo {
   formattedCycleRange: string;
 }
 
+export function getIsoDateString(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function normalizeTransactionDate(dateStr?: string): string {
+  if (!dateStr) return getIsoDateString();
+  const lower = dateStr.toLowerCase().trim();
+  const now = new Date();
+  if (lower === 'today') {
+    return getIsoDateString(now);
+  }
+  if (lower === 'yesterday') {
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    return getIsoDateString(yesterday);
+  }
+  const daysAgoMatch = lower.match(/^(\d+)\s*days?\s*ago$/);
+  if (daysAgoMatch) {
+    const days = parseInt(daysAgoMatch[1], 10);
+    const past = new Date(now);
+    past.setDate(now.getDate() - days);
+    return getIsoDateString(past);
+  }
+  const ymdMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+  }
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    return getIsoDateString(parsed);
+  }
+  return getIsoDateString(now);
+}
+
 export function parseTransactionDate(dateStr: string): Date {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -262,12 +299,19 @@ export function parseTransactionDate(dateStr: string): Date {
     d.setDate(d.getDate() - 1);
     return d;
   }
-  const daysAgoMatch = lower.match(/^(\d+)\s+days?\s+ago$/);
+  const daysAgoMatch = lower.match(/^(\d+)\s*days?\s*ago$/);
   if (daysAgoMatch) {
     const days = parseInt(daysAgoMatch[1], 10);
     const d = new Date(now);
     d.setDate(d.getDate() - days);
     return d;
+  }
+  const ymdMatch = (dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    return new Date(year, month, day, 0, 0, 0, 0);
   }
   const parsed = new Date(dateStr);
   if (!isNaN(parsed.getTime())) {

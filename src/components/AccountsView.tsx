@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BankAccount, Transaction, BudgetConfig } from '../types';
-import { getAccountBalances } from '../utils/finance';
+import { getAccountBalances, normalizeTransactionDate } from '../utils/finance';
 import { TransferMoneyModal } from './TransferMoneyModal';
 
 interface AccountsViewProps {
@@ -164,7 +164,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       category: 'Transfer',
       title: `Transfer: ${fromAcc?.name || 'Account'} ➔ ${toAcc?.name || 'Account'}`,
       amount,
-      date: transferDate || 'Today',
+      date: normalizeTransactionDate(transferDate),
       memo: transferMemo.trim() || `Money transfer from ${fromAcc?.name} to ${toAcc?.name}`,
       accountId: transferFromId,
       toAccountId: transferToId,

@@ -21,7 +21,7 @@ import { ProfileView } from './components/ProfileView';
 import { LoginView } from './components/LoginView';
 import { SplashLoader } from './components/SplashLoader';
 
-import { getCategoryBreakdown } from './utils/finance';
+import { getCategoryBreakdown, normalizeTransactionDate } from './utils/finance';
 import {
   listenToAuth,
   loginWithGoogle,
@@ -35,12 +35,12 @@ function mergeTransactionsById(local: Transaction[], remote: Transaction[]): Tra
   const map = new Map<string, Transaction>();
   if (Array.isArray(local)) {
     local.forEach((t) => {
-      if (t && t.id) map.set(t.id, t);
+      if (t && t.id) map.set(t.id, { ...t, date: normalizeTransactionDate(t.date) });
     });
   }
   if (Array.isArray(remote)) {
     remote.forEach((t) => {
-      if (t && t.id) map.set(t.id, t);
+      if (t && t.id) map.set(t.id, { ...t, date: normalizeTransactionDate(t.date) });
     });
   }
   return Array.from(map.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -72,7 +72,8 @@ export default function App() {
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('luminous_v2_txs');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    const list: Transaction[] = saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    return list.map((t) => ({ ...t, date: normalizeTransactionDate(t.date) }));
   });
 
   const [fixedBills, setFixedBills] = useState<FixedBill[]>(() => {
@@ -333,6 +334,7 @@ export default function App() {
     const tx: Transaction = {
       ...newTx,
       id: `tx-${Date.now()}`,
+      date: normalizeTransactionDate(newTx.date),
     };
     setTransactions((prev) => [tx, ...prev]);
   };
@@ -343,7 +345,15 @@ export default function App() {
 
   const handleUpdateTransaction = (id: string, updatedFields: Partial<Transaction>) => {
     setTransactions((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updatedFields } : t))
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              ...updatedFields,
+              ...(updatedFields.date ? { date: normalizeTransactionDate(updatedFields.date) } : {}),
+            }
+          : t
+      )
     );
   };
 

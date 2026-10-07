@@ -154,6 +154,12 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
           <h1 className="text-2xl md:text-3xl font-bold text-[#191c1d]">Category Budgets & Rollover</h1>
           <p className="text-sm text-[#44474c]">Set target limits, manage carry-over surpluses, and track daily rolling pacing.</p>
         </div>
+
+        {/* Cycle Info Badge Above Metric Cards */}
+        <div className="flex items-center gap-2 self-start md:self-auto bg-[#006397]/10 border border-[#006397]/20 text-[#006397] px-3.5 py-1.5 rounded-full font-mono text-xs font-bold shadow-2xs">
+          <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+          <span>Cycle: {cycleInfo.formattedCycleRange} (Day {cycleInfo.elapsedDays}/{cycleInfo.totalDaysInCycle})</span>
+        </div>
       </div>
 
       {/* Budget Allocation & Pacing Metric Cards Grid */}
@@ -211,8 +217,8 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
               Net Available Per Day
             </span>
-            <span className="text-xs text-[#74777d] font-mono">
-              Cycle: {cycleInfo.formattedCycleRange} (Day {cycleInfo.elapsedDays}/{cycleInfo.totalDaysInCycle})
+            <span className="text-xs font-semibold text-[#00a656] bg-[#00a656]/10 px-2 py-0.5 rounded-full">
+              {daysLeftInCycle} Days Left
             </span>
           </div>
 
