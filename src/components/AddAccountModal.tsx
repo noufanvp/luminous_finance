@@ -47,7 +47,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   onClose,
   initialAccount,
   onSaveAccount,
-  currencySymbol = '$',
+  currencySymbol = '₹',
 }) => {
   if (!isOpen) return null;
 

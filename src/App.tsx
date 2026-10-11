@@ -64,7 +64,19 @@ export default function App() {
   // Load state from localStorage or initial defaults
   const [config, setConfig] = useState<BudgetConfig>(() => {
     const saved = localStorage.getItem('luminous_v2_config');
-    return saved ? JSON.parse(saved) : INITIAL_CONFIG;
+    if (!saved) return INITIAL_CONFIG;
+    try {
+      const parsed = JSON.parse(saved);
+      // Migrate from previous default USD/$ to default INR/₹
+      if (!parsed.currencyCode || parsed.currencyCode === 'USD' || !parsed.currencySymbol || parsed.currencySymbol === '$') {
+        const updated = { ...parsed, currencyCode: 'INR', currencySymbol: '₹' };
+        localStorage.setItem('luminous_v2_config', JSON.stringify(updated));
+        return updated;
+      }
+      return parsed;
+    } catch {
+      return INITIAL_CONFIG;
+    }
   });
 
   const [accounts, setAccounts] = useState<BankAccount[]>(() => {
@@ -694,6 +706,7 @@ export default function App() {
         onAddMember={handleAddMember}
         onUpdateMember={handleUpdateMember}
         onDeleteMember={handleDeleteMember}
+        currencySymbol={config.currencySymbol}
       />
 
       {/* Mobile Bottom Navigation */}

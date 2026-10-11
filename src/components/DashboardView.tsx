@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction, CategoryTemplate, BudgetConfig, TabType, BankAccount, FixedBill, FamilyMember } from '../types';
-import { calculateSummary, getCategoryBreakdown, getAccountBalances } from '../utils/finance';
+import { calculateSummary, getCategoryBreakdown, getAccountBalances, getFamilyBudgetGoals } from '../utils/finance';
 
 interface DashboardViewProps {
   transactions: Transaction[];
@@ -43,10 +43,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ? accounts.filter((a) => (a.memberId ? a.memberId === activeMemberId : (defaultMember ? defaultMember.id === activeMemberId : true)))
     : accounts;
 
+  // Family / Member Budget Goals:
+  // In 'All Family' view, the budget target is the combined sum of all members' budget goals.
+  // In an individual member view, the target is that specific member's budget goal.
+  const budgetGoals = getFamilyBudgetGoals(members, activeMemberId, config.monthlyTarget);
+  const effectiveMonthlyTarget = budgetGoals.effectiveTarget;
+
   // 1. Calculate Summary Metrics
   const summary = calculateSummary(
     activeTransactions,
-    config.monthlyTarget,
+    effectiveMonthlyTarget,
     config.paydayAnchorDay
   );
 
@@ -60,11 +66,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     .reduce((sum, b) => sum + b.amount, 0);
 
   const daysLeft = Math.max(1, summary.daysLeft);
-  const grossDailyAllowance = Math.max(0, config.monthlyTarget - allocatedSpent) / daysLeft;
+  const grossDailyAllowance = Math.max(0, effectiveMonthlyTarget - allocatedSpent) / daysLeft;
   const otherDailyImpact = otherSpent / daysLeft;
 
   // Currency Symbol
-  const sym = config.currencySymbol || '$';
+  const sym = config.currencySymbol || '₹';
 
   // Account Balances Metrics (Dynamic real-time balance incorporating income, expenses, and transfers)
   const accountBalancesList = getAccountBalances(activeAccounts, activeTransactions);
@@ -139,41 +145,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 flex flex-col gap-5 sm:gap-6">
-      {/* Active Member Scoped Banner */}
-      {activeMemberId !== 'all' && activeMember && (
-        <div className="bg-gradient-to-r from-[#00476e] to-[#006397] rounded-2xl p-4 text-white shadow-md flex items-center justify-between gap-3 animate-in fade-in duration-200">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-2xl text-white font-extrabold text-base flex items-center justify-center shadow-xs shrink-0 border-2 border-white/40"
-              style={{ backgroundColor: activeMember.color || '#006397' }}
-            >
-              {activeMember.name.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm sm:text-base leading-tight">
-                  {activeMember.name}'s Financial View
-                </h3>
-                <span className="text-[10px] bg-white/20 font-bold px-2 py-0.5 rounded-full">
-                  {activeMember.role || 'Member'}
-                </span>
-              </div>
-              <p className="text-xs text-[#92ccff] mt-0.5">
-                Filtered to {activeMember.name}'s transactions under this shared account
-              </p>
-            </div>
-          </div>
 
-          {onSelectMember && (
-            <button
-              onClick={() => onSelectMember('all')}
-              className="px-3.5 py-1.5 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-bold transition-all shrink-0 border border-white/20 active:scale-95 cursor-pointer shadow-2xs"
-            >
-              Switch to All Family
-            </button>
-          )}
-        </div>
-      )}
 
       {/* ==================== TOP KEY METRICS CARDS GRID ==================== */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -716,19 +688,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 truncate">
                             <h4 className="text-xs font-bold text-[#041627] truncate">{tx.title}</h4>
-                            {tx.memberId && (
-                              <span
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-white text-[#475569] border border-[#d2e4fb]/80 shrink-0"
-                              >
-                                <span
-                                  className="w-1.5 h-1.5 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      members.find((m) => m.id === tx.memberId)?.color || '#006397',
-                                  }}
-                                />
-                                <span>{members.find((m) => m.id === tx.memberId)?.name || 'Member'}</span>
-                              </span>
+                            {activeMemberId === 'all' && (
+                              (() => {
+                                const txMember = tx.memberId
+                                  ? members.find((m) => m.id === tx.memberId)
+                                  : members.find((m) => m.isDefault) || members[0];
+                                if (!txMember) return null;
+                                return (
+                                  <span
+                                    className="text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-white text-[#475569] border border-[#d2e4fb]/80 shrink-0"
+                                    title={`Added by: ${txMember.name}`}
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{
+                                        backgroundColor: txMember.color || '#006397',
+                                      }}
+                                    />
+                                    <span>{txMember.name}</span>
+                                  </span>
+                                );
+                              })()
                             )}
                           </div>
                           <span className="text-[10px] text-[#44474c] font-medium block truncate">

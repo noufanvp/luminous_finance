@@ -38,53 +38,38 @@ export const FamilyMemberSwitcher: React.FC<FamilyMemberSwitcherProps> = ({
 
   return (
     <div className="relative inline-block text-left" ref={dropdownRef}>
-      {/* Switcher Trigger Button */}
+      {/* Switcher Trigger Button - Direct Icon Badge */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all border active:scale-95 cursor-pointer shadow-2xs ${
+        className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl transition-all border active:scale-95 cursor-pointer shadow-2xs flex items-center justify-center shrink-0 ${
           activeMemberId === 'all'
-            ? 'bg-gradient-to-r from-[#006397]/10 to-[#0284c7]/15 border-[#006397]/30 text-[#006397] hover:bg-[#006397]/20'
-            : 'bg-white border-[#c4c6cd]/40 text-[#041627] hover:bg-[#f8f9fa]'
+            ? 'bg-[#006397] border-[#006397] text-white hover:bg-[#004e78]'
+            : 'border-transparent text-white hover:opacity-90'
         }`}
-        title="Switch family member / profile"
+        style={
+          activeMemberId !== 'all'
+            ? { backgroundColor: activeMember?.color || '#006397', borderColor: activeMember?.color || '#006397' }
+            : undefined
+        }
+        title={`Family Member: ${activeMemberId === 'all' ? 'All Family' : activeMember?.name || 'Member'} (Click to switch)`}
+        aria-label="Switch family member profile"
       >
         {activeMemberId === 'all' ? (
-          <div className="w-6 h-6 rounded-lg bg-[#006397] text-white flex items-center justify-center shrink-0 shadow-2xs">
-            <span className="material-symbols-outlined text-[15px]">diversity_3</span>
-          </div>
+          <span className="material-symbols-outlined text-[17px] sm:text-[19px]">diversity_3</span>
         ) : (
-          <div
-            className="w-6 h-6 rounded-lg text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs"
-            style={{ backgroundColor: activeMember?.color || '#006397' }}
-          >
+          <span className="font-extrabold text-xs sm:text-sm">
             {activeMember?.name ? activeMember.name.charAt(0).toUpperCase() : 'U'}
-          </div>
+          </span>
         )}
-
-        <div className="flex flex-col text-left leading-tight">
-          <span className="text-xs font-bold truncate max-w-[90px] sm:max-w-[130px]">
-            {activeMemberId === 'all' ? 'All Family' : activeMember?.name || 'Member'}
-          </span>
-          <span className="text-[9px] font-semibold text-[#44474c] hidden sm:block">
-            {activeMemberId === 'all' ? `${members.length} Members` : activeMember?.role || 'Profile'}
-          </span>
-        </div>
-
-        <span className="material-symbols-outlined text-[16px] text-[#74777d] shrink-0 transition-transform duration-200">
-          {isOpen ? 'expand_less' : 'expand_more'}
-        </span>
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 sm:left-0 sm:right-auto mt-2 w-64 sm:w-72 rounded-2xl bg-white shadow-2xl border border-[#e1e3e4] py-2 z-[90] animate-in fade-in zoom-in-95 duration-150">
-          <div className="px-3.5 py-2 border-b border-[#e1e3e4]/80 flex items-center justify-between">
+        <div className="absolute right-0 mt-2 w-64 sm:w-72 rounded-2xl bg-white shadow-2xl border border-[#e1e3e4] py-2 z-[90] animate-in fade-in zoom-in-95 duration-150">
+          <div className="px-3.5 py-2 border-b border-[#e1e3e4]/80">
             <span className="text-[11px] font-extrabold text-[#44474c] uppercase tracking-wider">
               Family Profile Switcher
-            </span>
-            <span className="text-[10px] bg-[#f0f4f8] text-[#006397] font-bold px-2 py-0.5 rounded-full border border-[#d2e4fb]">
-              Same Login
             </span>
           </div>
 

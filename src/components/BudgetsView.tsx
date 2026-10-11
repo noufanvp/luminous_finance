@@ -4,6 +4,7 @@ import {
   getCategoryBreakdown,
   getBillingCycleInfo,
   getRollingDailyCategoryPacing,
+  getFamilyBudgetGoals,
 } from '../utils/finance';
 import { AddCategoryModal } from './AddCategoryModal';
 
@@ -48,11 +49,14 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
 
   const [modeFilter, setModeFilter] = useState<'all' | 'rolling' | 'standard'>('all');
 
-  const sym = config.currencySymbol || '$';
+  const sym = config.currencySymbol || '₹';
   const activeDate = new Date();
 
   const isAllFamily = activeMemberId === 'all';
   const defaultMember = members.find((m) => m.isDefault) || members[0];
+
+  const budgetGoals = getFamilyBudgetGoals(members, activeMemberId, config.monthlyTarget);
+  const targetBudget = budgetGoals.effectiveTarget;
 
   const scopedTransactions = isAllFamily
     ? transactions
@@ -62,7 +66,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
       });
 
   const totalIncome = scopedTransactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-  const baseIncome = totalIncome > 0 ? totalIncome : (config.monthlyTarget > 0 ? config.monthlyTarget : 5000);
+  const baseIncome = totalIncome > 0 ? totalIncome : (targetBudget > 0 ? targetBudget : 5000);
 
   const breakdown = getCategoryBreakdown(scopedTransactions, categories);
   const cycleInfo = getBillingCycleInfo(config.paydayAnchorDay, activeDate);
@@ -113,7 +117,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const totalAllocatedSpent = allocatedBreakdown.reduce((sum, b) => sum + b.amount, 0);
 
   const daysLeftInCycle = Math.max(1, cycleInfo.daysRemainingInCycle);
-  const totalEffectiveBudget = breakdown.reduce((sum, b) => sum + b.effectiveBudget, 0) || config.monthlyTarget || 3000;
+  const totalEffectiveBudget = breakdown.reduce((sum, b) => sum + b.effectiveBudget, 0) || targetBudget || 3000;
 
   // Total allocated budget across categories vs monthly target budget
   const totalBudgetAllocated = categories
@@ -126,7 +130,6 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
     )
     .reduce((sum, cat) => sum + (cat.budgetLimit ?? 0), 0);
 
-  const targetBudget = config.monthlyTarget || 3000;
   const unallocatedTargetBudget = targetBudget - totalBudgetAllocated;
   const allocationPercentage = targetBudget > 0 ? Math.round((totalBudgetAllocated / targetBudget) * 100) : 0;
 
@@ -246,9 +249,26 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
 
           <div className="pt-2.5 border-t border-[#f0f4f8] text-xs space-y-1">
             <div className="flex justify-between text-[#44474c]">
-              <span>Target Budget:</span>
+              <span>{isAllFamily ? 'Combined Family Target:' : 'Monthly Target:'}</span>
               <span className="font-mono text-[#191c1d] font-bold">{sym}{targetBudget.toLocaleString('en-US')}</span>
             </div>
+            {isAllFamily && members.length > 0 && (
+              <div className="pt-1 pb-1 flex flex-wrap gap-1">
+                {members.map((m) => {
+                  const mGoal = budgetGoals.getMemberGoal(m);
+                  return (
+                    <span
+                      key={m.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#f0f4f8] text-[10px] text-[#44474c] font-medium border border-[#e1e3e4]"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: m.color || '#006397' }} />
+                      <span>{m.name}:</span>
+                      <span className="font-mono font-bold text-[#191c1d]">{sym}{mGoal.toLocaleString('en-US')}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div className="flex justify-between text-[#74777d]">
               <span>Allocated to categories:</span>
               <span className="font-mono font-bold text-[#006397]">{sym}{totalBudgetAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -1049,7 +1069,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         }}
         currencySymbol={sym}
         baseIncome={baseIncome}
-        monthlyBudgetGoal={config.monthlyTarget || baseIncome || 3000}
+        monthlyBudgetGoal={targetBudget || baseIncome || 3000}
       />
     </div>
   );

@@ -44,7 +44,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
   onDeleteCategory,
   onReorderCategories,
 }) => {
-  const sym = config?.currencySymbol || '$';
+  const sym = config?.currencySymbol || '₹';
   const isEditMode = Boolean(editingTransaction);
 
   const [txType, setTxType] = useState<TransactionType>(

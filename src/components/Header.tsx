@@ -92,15 +92,15 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-[#e1e3e4] shadow-xs transition-all">
-        <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-col gap-2.5">
+        <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-2.5 flex flex-col gap-2">
           {/* Top Row: Logo & User Info + Wallet Button + Gmail Auth */}
-          <div className="flex justify-between items-center w-full shrink-0">
+          <div className="flex justify-between items-center w-full gap-1.5 sm:gap-2 min-w-0">
             {/* Leading: Avatar + Title */}
             <div
-              className="flex items-center gap-2 sm:gap-3 cursor-pointer group shrink-0"
+              className="flex items-center gap-1.5 sm:gap-2.5 cursor-pointer group min-w-0 flex-shrink"
               onClick={() => setActiveTab('profile')}
             >
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#f0f4f8] overflow-hidden shadow-2xs border-2 border-[#006397]/20 flex-shrink-0 group-hover:border-[#006397] transition-all">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#f0f4f8] overflow-hidden shadow-2xs border-2 border-[#006397]/20 flex-shrink-0 group-hover:border-[#006397] transition-all">
                 <img
                   src={currentUser?.photoURL || config.userAvatar}
                   alt="User Profile Avatar"
@@ -108,12 +108,15 @@ export const Header: React.FC<HeaderProps> = ({
                   referrerPolicy="no-referrer"
                 />
               </div>
-              <div className="flex flex-col">
-                <h1 className="text-base sm:text-lg md:text-xl font-extrabold text-[#041627] tracking-tight leading-none flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
-                  <span className="material-symbols-outlined text-[#006397] text-[18px] sm:text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+              <div className="flex flex-col min-w-0">
+                <h1 className="text-sm sm:text-base md:text-xl font-extrabold text-[#041627] tracking-tight leading-none flex items-center gap-1 sm:gap-1.5 min-w-0">
+                  <span className="material-symbols-outlined text-[#006397] text-[17px] sm:text-[20px] shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
                     auto_awesome
                   </span>
-                  <span>Luminous Finance</span>
+                  <span className="truncate">
+                    <span className="sm:hidden">Luminous</span>
+                    <span className="hidden sm:inline">Luminous Finance</span>
+                  </span>
                 </h1>
                 <span className="text-[9px] sm:text-[10px] font-semibold text-[#006397] uppercase tracking-wider mt-0.5 hidden sm:block">
                   Smart Pacing Engine
@@ -122,7 +125,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Trailing: Family Member Switcher + Wallet Icon Button & Google Login Button */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               {members.length > 0 && (
                 <FamilyMemberSwitcher
                   members={members}
@@ -135,29 +138,24 @@ export const Header: React.FC<HeaderProps> = ({
               {currentUser ? (
                 <button
                   onClick={onManualSync}
-                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all active:scale-95 text-xs font-bold shrink-0 ${
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl border flex items-center justify-center transition-all active:scale-95 shrink-0 ${
                     syncStatus === 'syncing'
                       ? 'bg-[#e0f2fe] border-[#38bdf8] text-[#0284c7]'
                       : syncStatus === 'error'
                       ? 'bg-[#ffebe9] border-[#ff8e88] text-[#c5221f]'
-                      : 'bg-[#e6f4ea] border-[#ceead6] text-[#137333]'
+                      : 'bg-[#e6f4ea] border-[#ceead6] text-[#137333] hover:bg-[#d7eedc]'
                   }`}
-                  title={lastSyncedAt ? `Last cloud sync at ${lastSyncedAt}. Click to force sync.` : 'Click to sync with cloud.'}
+                  title={lastSyncedAt ? `Cloud sync: ${syncStatus}. Last synced: ${lastSyncedAt}. Click to force sync.` : 'Click to sync with cloud.'}
+                  aria-label="Sync with cloud"
                 >
-                  <span className={`material-symbols-outlined text-[16px] ${syncStatus === 'syncing' ? 'animate-spin' : ''}`}>
-                    {syncStatus === 'syncing' ? 'sync' : syncStatus === 'error' ? 'sync_problem' : 'cloud_done'}
+                  <span className={`material-symbols-outlined text-[16px] sm:text-[18px] ${syncStatus === 'syncing' ? 'animate-spin' : ''}`}>
+                    {syncStatus === 'syncing' ? 'sync' : syncStatus === 'error' ? 'sync_problem' : 'sync'}
                   </span>
-                  <span className="hidden sm:inline">
-                    {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync Issue' : 'Synced'}
-                  </span>
-                  {lastSyncedAt && syncStatus === 'synced' && (
-                    <span className="text-[10px] font-mono opacity-80 hidden md:inline">({lastSyncedAt})</span>
-                  )}
                 </button>
               ) : (
                 <button
                   onClick={onLoginWithGoogle}
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#006397] hover:bg-[#00476e] text-white transition-all active:scale-95 shadow-2xs shrink-0 text-xs font-bold"
+                  className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-[#006397] hover:bg-[#00476e] text-white transition-all active:scale-95 shadow-2xs shrink-0 text-xs font-bold"
                   title="Sign in with Gmail to sync data across all devices"
                 >
                   <svg className="w-4 h-4 bg-white rounded-full p-0.5 shrink-0" viewBox="0 0 24 24">
@@ -186,24 +184,24 @@ export const Header: React.FC<HeaderProps> = ({
               {!isStandaloneApp && (
                 <button
                   onClick={handleInstallClick}
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#00476e] to-[#006397] hover:from-[#003857] hover:to-[#00476e] text-white transition-all active:scale-95 shadow-2xs shrink-0 text-xs font-bold"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#00476e] to-[#006397] hover:from-[#003857] hover:to-[#00476e] text-white transition-all active:scale-95 shadow-2xs shrink-0 text-xs font-bold"
                   title="Install Luminous Finance as a standalone native app"
                 >
                   <span className="material-symbols-outlined text-[16px] text-[#92ccff]">install_mobile</span>
-                  <span className="hidden sm:inline">Install App</span>
+                  <span>Install App</span>
                 </button>
               )}
 
               <button
                 onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#f0f4f8] hover:bg-[#e1e3e4] text-[#006397] border border-[#d2e4fb] transition-all active:scale-95 shadow-2xs shrink-0"
+                className="h-8 sm:h-9 flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 rounded-xl bg-[#f0f4f8] hover:bg-[#e1e3e4] text-[#006397] border border-[#d2e4fb] transition-all active:scale-95 shadow-2xs shrink-0 cursor-pointer"
                 title="Wallet summary"
               >
-                <span className="material-symbols-outlined text-[18px] sm:text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                <span className="material-symbols-outlined text-[16px] sm:text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                   account_balance_wallet
                 </span>
-                <span className="text-xs font-bold text-[#041627]">
-                  {config.currencySymbol || '$'}{(totalIncome - totalExpenses).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                <span className="text-[11px] sm:text-xs font-bold text-[#041627] whitespace-nowrap">
+                  {config.currencySymbol || '₹'}{(totalIncome - totalExpenses).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
               </button>
             </div>
@@ -309,23 +307,23 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-[#041627]">Wallet Overview</h3>
-                <p className="text-xs text-[#44474c]">Monthly Cashflow ({config.currencyCode || 'USD'})</p>
+                <p className="text-xs text-[#44474c]">Monthly Cashflow ({config.currencyCode || 'INR'})</p>
               </div>
             </div>
 
             <div className="space-y-3 bg-[#f8f9fa] p-4 rounded-xl border border-[#e1e3e4]/60 mb-5">
               <div className="flex justify-between text-sm">
                 <span className="text-[#44474c]">Total Income:</span>
-                <span className="font-semibold text-[#00a656]">+{config.currencySymbol || '$'}{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                <span className="font-semibold text-[#00a656]">+{config.currencySymbol || '₹'}{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#44474c]">Total Expenses:</span>
-                <span className="font-semibold text-[#ba1a1a]">-{config.currencySymbol || '$'}{totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                <span className="font-semibold text-[#ba1a1a]">-{config.currencySymbol || '₹'}{totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="border-t border-[#e1e3e4] pt-2 flex justify-between text-sm font-bold">
                 <span className="text-[#041627]">Net Cashflow:</span>
                 <span className={totalIncome - totalExpenses >= 0 ? "text-[#00a656]" : "text-[#ba1a1a]"}>
-                  {config.currencySymbol || '$'}{(totalIncome - totalExpenses).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {config.currencySymbol || '₹'}{(totalIncome - totalExpenses).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>

@@ -524,7 +524,7 @@ export const TransferMoneyModal: React.FC<TransferMoneyModalProps> = ({
   onClose,
   accounts,
   transactions,
-  currencySymbol = '$',
+  currencySymbol = '₹',
   onTransfer,
   initialFromAccountId,
   initialToAccountId,

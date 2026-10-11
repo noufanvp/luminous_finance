@@ -7,7 +7,9 @@ export interface FamilyMember {
   avatar?: string;
   color?: string;
   isDefault?: boolean;
+  monthlyBudget?: number; // Personal monthly budget goal
 }
+
 
 export interface BankAccount {
   id: string;
@@ -83,10 +85,10 @@ export interface CurrencyOption {
 }
 
 export const CURRENCY_OPTIONS: CurrencyOption[] = [
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee (₹)' },
   { code: 'USD', symbol: '$', name: 'US Dollar ($)' },
   { code: 'EUR', symbol: '€', name: 'Euro (€)' },
   { code: 'GBP', symbol: '£', name: 'British Pound (£)' },
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee (₹)' },
   { code: 'JPY', symbol: '¥', name: 'Japanese Yen (¥)' },
   { code: 'AUD', symbol: 'A$', name: 'Australian Dollar (A$)' },
   { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar (C$)' },

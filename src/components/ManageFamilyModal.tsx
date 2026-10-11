@@ -10,6 +10,7 @@ interface ManageFamilyModalProps {
   onAddMember: (member: Omit<FamilyMember, 'id'>) => void;
   onUpdateMember: (id: string, updated: Partial<FamilyMember>) => void;
   onDeleteMember: (id: string) => void;
+  currencySymbol?: string;
 }
 
 const MEMBER_ROLES = [
@@ -54,6 +55,7 @@ export const ManageFamilyModal: React.FC<ManageFamilyModalProps> = ({
   onAddMember,
   onUpdateMember,
   onDeleteMember,
+  currencySymbol = '₹',
 }) => {
   const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
@@ -63,6 +65,14 @@ export const ManageFamilyModal: React.FC<ManageFamilyModalProps> = ({
   const [formName, setFormName] = useState('');
   const [formRole, setFormRole] = useState('Self');
   const [formColor, setFormColor] = useState('#006397');
+  const [formMonthlyBudget, setFormMonthlyBudget] = useState('3000');
+
+  const sym = currencySymbol || '₹';
+
+  const totalCombinedBudget = members.reduce(
+    (sum, m) => sum + (typeof m.monthlyBudget === 'number' && !isNaN(m.monthlyBudget) ? m.monthlyBudget : (m.isDefault ? 3000 : 0)),
+    0
+  );
 
   if (!isOpen) return null;
 
@@ -71,6 +81,7 @@ export const ManageFamilyModal: React.FC<ManageFamilyModalProps> = ({
     setFormName('');
     setFormRole('Spouse');
     setFormColor(PRESET_MEMBER_COLORS[members.length % PRESET_MEMBER_COLORS.length]);
+    setFormMonthlyBudget('1500');
     setIsAddingNew(true);
   };
 
@@ -80,23 +91,31 @@ export const ManageFamilyModal: React.FC<ManageFamilyModalProps> = ({
     setFormName(m.name);
     setFormRole(m.role || 'Other');
     setFormColor(m.color || '#006397');
+    setFormMonthlyBudget(
+      (m.monthlyBudget !== undefined && m.monthlyBudget !== null ? m.monthlyBudget : (m.isDefault ? 3000 : 1500)).toString()
+    );
   };
 
   const handleCancelForm = () => {
     setIsAddingNew(false);
     setEditingMember(null);
     setFormName('');
+    setFormMonthlyBudget('3000');
   };
 
   const handleSave = () => {
     const trimmed = formName.trim();
     if (!trimmed) return;
 
+    const parsedBudget = parseFloat(formMonthlyBudget);
+    const finalBudget = isNaN(parsedBudget) || parsedBudget < 0 ? 0 : parsedBudget;
+
     if (isAddingNew) {
       onAddMember({
         name: trimmed,
         role: formRole,
         color: formColor,
+        monthlyBudget: finalBudget,
       });
       handleCancelForm();
     } else if (editingMember) {
@@ -104,6 +123,7 @@ export const ManageFamilyModal: React.FC<ManageFamilyModalProps> = ({
         name: trimmed,
         role: formRole,
         color: formColor,
+        monthlyBudget: finalBudget,
       });
       handleCancelForm();
     }
@@ -215,6 +235,33 @@ export const ManageFamilyModal: React.FC<ManageFamilyModalProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Monthly Budget Goal */}
+            <div>
+              <label className="text-xs font-bold text-[#44474c] block mb-1">
+                Monthly Budget Goal ({sym})
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-sm text-[#74777d]">
+                  {sym}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={formMonthlyBudget}
+                  onChange={(e) => setFormMonthlyBudget(e.target.value)}
+                  placeholder="e.g., 2000"
+                  className="w-full pl-8 pr-3.5 py-2 bg-white rounded-xl text-sm font-semibold text-[#191c1d] border border-[#c4c6cd]/40 focus:outline-none focus:ring-2 focus:ring-[#006397]"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSave();
+                  }}
+                />
+              </div>
+              <span className="text-[11px] text-[#74777d] mt-1 block">
+                This member's personal spending budget goal. The All Family budget goal is the sum of all members' goals.
+              </span>
             </div>
 
             {/* Action Buttons */}

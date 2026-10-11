@@ -47,8 +47,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   lastSyncedAt,
   onManualSync,
 }) => {
-  const sym = config.currencySymbol || '$';
-  const currentCode = config.currencyCode || 'USD';
+  const sym = config.currencySymbol || '₹';
+  const currentCode = config.currencyCode || 'INR';
 
   const [monthlyTargetInput, setMonthlyTargetInput] = useState(config.monthlyTarget.toString());
   const [savedMsg, setSavedMsg] = useState('');
@@ -68,6 +68,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isInstalledApp, setIsInstalledApp] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [installPlatformTab, setInstallPlatformTab] = useState<'desktop' | 'android' | 'ios'>('desktop');
+
+  const combinedFamilyBudget = members.reduce(
+    (sum, m) => sum + (typeof m.monthlyBudget === 'number' && !isNaN(m.monthlyBudget) ? m.monthlyBudget : (m.isDefault ? config.monthlyTarget : 0)),
+    0
+  );
+  const activeMember = members.find((m) => m.id === activeMemberId);
+
+  React.useEffect(() => {
+    if (activeMemberId !== 'all') {
+      const cur = members.find((m) => m.id === activeMemberId);
+      if (cur) {
+        setMonthlyTargetInput((typeof cur.monthlyBudget === 'number' ? cur.monthlyBudget : (cur.isDefault ? config.monthlyTarget : 3000)).toString());
+      }
+    } else {
+      setMonthlyTargetInput(config.monthlyTarget.toString());
+    }
+  }, [activeMemberId, members, config.monthlyTarget]);
 
   React.useEffect(() => {
     setCustomSymbolInput(sym);
@@ -155,7 +172,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const handleSaveBudget = () => {
     const val = parseFloat(monthlyTargetInput);
     if (!isNaN(val) && val > 0) {
-      onUpdateConfig({ monthlyTarget: val });
+      if (activeMemberId !== 'all') {
+        if (onUpdateMember) {
+          onUpdateMember(activeMemberId, { monthlyBudget: val });
+        }
+        if (activeMember?.isDefault) {
+          onUpdateConfig({ monthlyTarget: val });
+        }
+      } else {
+        onUpdateConfig({ monthlyTarget: val });
+        const primaryMember = members.find((m) => m.isDefault) || members[0];
+        if (primaryMember && onUpdateMember) {
+          onUpdateMember(primaryMember.id, { monthlyBudget: val });
+        }
+      }
       setSavedMsg('Monthly target updated successfully!');
       setTimeout(() => setSavedMsg(''), 2500);
     }
@@ -665,30 +695,52 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* Target Budget Setting */}
       <div className="bg-white rounded-2xl p-6 shadow-ambient border border-[#e1e3e4] flex flex-col gap-4">
-        <h3 className="text-lg font-bold text-[#191c1d]">Monthly Budget Goal</h3>
+        <h3 className="text-lg font-bold text-[#191c1d]">
+          {activeMemberId === 'all'
+            ? 'Monthly Budget Goal (All Family)'
+            : `Monthly Budget Goal (${activeMember?.name || 'Member'})`}
+        </h3>
         <p className="text-xs text-[#44474c]">
-          Set your overall monthly pacing target. Your daily allowance will adapt dynamically based on your remaining funds.
+          {activeMemberId === 'all'
+            ? "The All Family budget goal is automatically computed as the combination of all family members' budget goals."
+            : "Set this member's individual monthly pacing target. Your daily allowance will adapt dynamically based on remaining funds."}
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-          <div className="relative flex-1">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74777d] font-bold">{sym}</span>
-            <input
-              type="number"
-              value={monthlyTargetInput}
-              onChange={(e) => setMonthlyTargetInput(e.target.value)}
-              className="w-full pl-8 pr-4 py-2.5 bg-[#f3f4f5] rounded-xl text-sm font-semibold text-[#191c1d] border border-[#c4c6cd]/30 focus:outline-none focus:ring-2 focus:ring-[#006397]"
-            />
+        {activeMemberId === 'all' ? (
+          <div className="bg-[#f0f4f8] rounded-2xl p-4 border border-[#d2e4fb]">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#006397] block">
+              All Family Combined Budget Goal
+            </span>
+            <div className="text-2xl sm:text-3xl font-extrabold font-mono text-[#006397] mt-0.5">
+              {sym}{combinedFamilyBudget.toLocaleString('en-US')}
+              <span className="text-xs font-normal text-[#44474c] ml-1.5">/ month</span>
+            </div>
+            <p className="text-xs text-[#74777d] mt-1">
+              Sum of all individual family member budget goals.
+            </p>
           </div>
-          <button
-            onClick={handleSaveBudget}
-            className="px-6 py-2.5 bg-[#006397] text-white font-semibold text-sm rounded-xl hover:bg-[#00476e] transition-colors"
-          >
-            Update Target
-          </button>
-        </div>
-
-        {savedMsg && <p className="text-xs text-[#00a656] font-semibold">{savedMsg}</p>}
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+              <div className="relative flex-1">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74777d] font-bold">{sym}</span>
+                <input
+                  type="number"
+                  value={monthlyTargetInput}
+                  onChange={(e) => setMonthlyTargetInput(e.target.value)}
+                  className="w-full pl-8 pr-4 py-2.5 bg-[#f3f4f5] rounded-xl text-sm font-semibold text-[#191c1d] border border-[#c4c6cd]/30 focus:outline-none focus:ring-2 focus:ring-[#006397]"
+                />
+              </div>
+              <button
+                onClick={handleSaveBudget}
+                className="px-6 py-2.5 bg-[#006397] text-white font-semibold text-sm rounded-xl hover:bg-[#00476e] transition-colors cursor-pointer"
+              >
+                Update Target
+              </button>
+            </div>
+            {savedMsg && <p className="text-xs text-[#00a656] font-semibold">{savedMsg}</p>}
+          </div>
+        )}
       </div>
 
       {/* Analytics Summary Card */}

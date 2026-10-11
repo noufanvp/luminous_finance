@@ -7,6 +7,7 @@ export const INITIAL_MEMBERS: FamilyMember[] = [
     role: 'Self',
     color: '#006397',
     isDefault: true,
+    monthlyBudget: 3000,
   },
 ];
 
@@ -16,8 +17,8 @@ export const INITIAL_CONFIG: BudgetConfig = {
   smartBufferActive: true,
   userAvatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuB0n075ADJHg4CURsbHX5o2QOxKEDSslqRBT0tWx5_kMteB71gMhnsI77SO3zGr3rlr7ItpdACDi7__Rhxe2JoL9U3GM1pgjS90gEK1cGvJgQwsUMonR-SxaPMZoAbYL4GAL7d3-oUFdmSlTjeyriiblvSswzfETzU5k2jhKHSCuIjrGrOwBmLN7C9eMv1MifKdz-tob59-i__DawGzIC_CO_KbzMvfqA2DV4v9drW9QPIT_ld4e5B5",
   userName: "User",
-  currencySymbol: "$",
-  currencyCode: "USD"
+  currencySymbol: "₹",
+  currencyCode: "INR"
 };
 
 export const INITIAL_ACCOUNTS: BankAccount[] = [

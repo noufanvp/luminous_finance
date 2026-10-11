@@ -1,4 +1,40 @@
-import { Transaction, CategoryTemplate, BankAccount } from '../types';
+import { Transaction, CategoryTemplate, BankAccount, FamilyMember } from '../types';
+
+/**
+ * Computes individual member budget goals and the combined family budget goal.
+ * In 'All Family' view, the goal is the sum of all family members' budget goals.
+ * In individual member view, the goal is that member's specific budget goal.
+ */
+export function getFamilyBudgetGoals(
+  members: FamilyMember[] = [],
+  activeMemberId: string = 'all',
+  fallbackTarget: number = 3000
+) {
+  const getMemberGoal = (m: FamilyMember): number => {
+    if (typeof m.monthlyBudget === 'number' && !isNaN(m.monthlyBudget)) {
+      return m.monthlyBudget;
+    }
+    return m.isDefault ? fallbackTarget : 0;
+  };
+
+  const totalFamilyBudget = members.length > 0
+    ? members.reduce((sum, m) => sum + getMemberGoal(m), 0)
+    : fallbackTarget;
+
+  const activeMember = members.find((m) => m.id === activeMemberId);
+  const activeMemberGoal = activeMember ? getMemberGoal(activeMember) : fallbackTarget;
+
+  const effectiveTarget = activeMemberId === 'all'
+    ? (totalFamilyBudget > 0 ? totalFamilyBudget : fallbackTarget)
+    : (activeMemberGoal > 0 ? activeMemberGoal : fallbackTarget);
+
+  return {
+    totalFamilyBudget: totalFamilyBudget > 0 ? totalFamilyBudget : fallbackTarget,
+    activeMemberGoal,
+    effectiveTarget,
+    getMemberGoal,
+  };
+}
 
 export function calculateSummary(
   transactions: Transaction[],

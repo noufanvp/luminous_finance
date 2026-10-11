@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Transaction, TabType, BudgetConfig, CategoryTemplate, TransactionType, BankAccount, FamilyMember } from '../types';
 import { CustomDateRangePicker } from './CustomDateRangePicker';
 import { ImportTransactionsModal } from './ImportTransactionsModal';
-import { normalizeTransactionDate, parseTransactionDate } from '../utils/finance';
+import { normalizeTransactionDate, parseTransactionDate, getFamilyBudgetGoals } from '../utils/finance';
 
 interface LedgerViewProps {
   transactions: Transaction[];
@@ -91,7 +91,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
   config,
   onImportTransactions,
 }) => {
-  const sym = config?.currencySymbol || '$';
+  const sym = config?.currencySymbol || '₹';
   
   // Import modal state
   const [showImportModal, setShowImportModal] = useState(false);
@@ -273,7 +273,8 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
   const calendarData = useMemo(() => {
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
     const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay(); // 0 = Sun
-    const monthlyTarget = config?.monthlyTarget || 0;
+    const budgetGoals = getFamilyBudgetGoals(members, activeMemberId, config?.monthlyTarget || 0);
+    const monthlyTarget = budgetGoals.effectiveTarget;
     const dailyAllowed = daysInMonth > 0 ? monthlyTarget / daysInMonth : 0;
 
     const daysList = [];
@@ -323,7 +324,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       monthTotalAllowed,
       monthTotalDiff,
     };
-  }, [transactions, calendarYear, calendarMonth, config?.monthlyTarget]);
+  }, [transactions, calendarYear, calendarMonth, config?.monthlyTarget, members, activeMemberId]);
 
   const handleStartEditing = (tx: Transaction) => {
     setEditForm({
@@ -531,14 +532,31 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     filterType !== 'all' ||
     periodPreset !== 'all' ||
     selectedCategoryFilter !== 'all' ||
+    selectedAccountFilter !== 'all' ||
+    (activeMemberId === 'all' && selectedMemberFilter !== 'all') ||
     selectedPersonFilter !== 'all' ||
     searchQuery.trim() !== '' ||
     sortOrder !== 'date_desc';
+
+  const activeFilterCount = [
+    filterType !== 'all',
+    periodPreset !== 'all',
+    selectedCategoryFilter !== 'all',
+    selectedAccountFilter !== 'all',
+    activeMemberId === 'all' && selectedMemberFilter !== 'all',
+    selectedPersonFilter !== 'all',
+    searchQuery.trim() !== '',
+    sortOrder !== 'date_desc',
+  ].filter(Boolean).length;
 
   const resetAllFilters = () => {
     setFilterType('all');
     setPeriodPreset('all');
     setSelectedCategoryFilter('all');
+    setSelectedAccountFilter('all');
+    if (activeMemberId === 'all') {
+      setSelectedMemberFilter('all');
+    }
     setSelectedPersonFilter('all');
     setCustomStartDate('');
     setCustomEndDate('');
@@ -688,56 +706,130 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
         </div>
       </div>
 
-      {/* Unified Filter & Sort Control Bar */}
-      <div className="bg-white rounded-2xl border border-[#e1e3e4] shadow-2xs p-4 flex flex-col gap-3.5">
-        {/* Top Row: Search & Type Toggle & Sort */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+      {/* Unified Filter & Sort Control Card */}
+      <div className="bg-white rounded-2xl border border-[#e1e3e4] shadow-xs p-3.5 sm:p-4 flex flex-col gap-3">
+        {/* Row 1: Search Bar (Flex-1) + Type Segments + Sort Order Dropdown */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5 sm:gap-3">
           {/* Search Input */}
-          <div className="relative flex-1 min-w-[220px]">
+          <div className="relative flex-1 min-w-[200px]">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#74777d] text-[18px]">
               search
             </span>
             <input
               type="text"
-              placeholder="Search by title, category, or note..."
+              placeholder="Search by title, category, memo..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-[#f3f4f5] rounded-xl text-xs sm:text-sm font-medium border border-[#c4c6cd]/20 focus:outline-none focus:ring-2 focus:ring-[#006397] transition-all"
+              className="w-full h-9 pl-9 pr-8 bg-[#f3f4f5] rounded-xl text-xs sm:text-sm font-medium border border-[#c4c6cd]/25 focus:outline-none focus:ring-2 focus:ring-[#006397] focus:bg-white transition-all text-[#191c1d] placeholder-[#74777d]"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#74777d] hover:text-[#191c1d] transition-colors"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#74777d] hover:text-[#191c1d] transition-colors cursor-pointer"
+                title="Clear search"
               >
                 <span className="material-symbols-outlined text-[16px]">close</span>
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap flex-1 justify-between sm:justify-end">
-            {/* Type Filter Pills */}
-            <div className="flex items-center p-1 bg-[#f3f4f5] rounded-xl border border-[#c4c6cd]/20 shadow-inner shrink-0">
-              {(['all', 'expense', 'income'] as const).map((type) => (
+          {/* Type Segmented Filter (All / Expenses / Income) */}
+          <div className="w-full md:w-auto h-9 p-0.5 bg-[#f3f4f5] rounded-xl border border-[#c4c6cd]/25 flex items-center shadow-inner shrink-0">
+            {(['all', 'expense', 'income'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setFilterType(type)}
+                className={`flex-1 md:flex-initial h-full px-3 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer text-center ${
+                  filterType === type
+                    ? 'bg-white shadow-2xs text-[#006397]'
+                    : 'text-[#44474c] hover:text-[#191c1d]'
+                }`}
+              >
+                {type === 'all' ? 'All Types' : type === 'expense' ? 'Expenses' : 'Income'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 2: Secondary Refinement Filters (Period, Sort, Category, Account, Member, Tag, Reset) */}
+        <div className="pt-2.5 border-t border-[#e1e3e4]/70 flex flex-wrap items-center justify-between gap-2">
+          {/* Left Side: Filter Chips / Dropdowns */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Period Quick Filter Pills */}
+            <div className="h-9 flex items-center gap-0.5 p-0.5 bg-[#f3f4f5] rounded-xl border border-[#c4c6cd]/25 shrink-0 overflow-x-auto scrollbar-none">
+              <span className="text-[10px] font-bold text-[#74777d] uppercase tracking-wider px-2 hidden lg:inline-flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-[#006397]">calendar_month</span>
+                Period
+              </span>
+              {[
+                { id: 'all', label: 'All Time' },
+                { id: 'week', label: 'Week' },
+                { id: 'month', label: 'Month' },
+                { id: 'year', label: 'Year' },
+                { id: 'custom', label: 'Custom' },
+              ].map((p) => (
                 <button
-                  key={type}
-                  onClick={() => setFilterType(type)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                    filterType === type
-                      ? 'bg-white shadow-2xs text-[#006397]'
-                      : 'text-[#44474c] hover:text-[#191c1d]'
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setPeriodPreset(p.id as any);
+                    if (p.id === 'custom') {
+                      setShowDatePickerModal(true);
+                    }
+                  }}
+                  className={`h-full px-2.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                    periodPreset === p.id
+                      ? 'bg-[#006397] text-white shadow-2xs'
+                      : 'text-[#44474c] hover:bg-white/60 hover:text-[#191c1d]'
                   }`}
                 >
-                  {type === 'all' ? 'All Types' : type === 'expense' ? 'Expenses' : 'Income'}
+                  {p.label}
                 </button>
               ))}
             </div>
 
-            {/* Category Filter Selector */}
+            {/* Custom Date Range Badge if Custom Period is Selected */}
+            {periodPreset === 'custom' && (
+              <button
+                type="button"
+                onClick={() => setShowDatePickerModal(true)}
+                className="h-9 flex items-center gap-1.5 bg-[#006397]/10 hover:bg-[#006397]/20 border border-[#006397]/30 text-[#006397] px-3 rounded-xl text-xs font-bold transition-all shrink-0 group cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[15px]">date_range</span>
+                <span>
+                  {customStartDate || customEndDate
+                    ? `${customStartDate || 'Start'} to ${customEndDate || 'End'}`
+                    : 'Select Range...'}
+                </span>
+                <span className="material-symbols-outlined text-[14px] group-hover:translate-x-0.5 transition-transform">
+                  edit_calendar
+                </span>
+              </button>
+            )}
+
+            {/* Sort Order Selector Chip */}
+            <div className="h-9 flex items-center gap-1.5 bg-[#f3f4f5] px-2.5 sm:px-3 rounded-xl border border-[#c4c6cd]/25 shrink-0 hover:bg-[#e1e3e4]/60 transition-colors">
+              <span className="material-symbols-outlined text-[#006397] text-[16px]">sort</span>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as any)}
+                className="bg-transparent text-xs font-bold text-[#191c1d] focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="date_desc">Newest First</option>
+                <option value="date_asc">Oldest First</option>
+                <option value="amount_desc">Amount: High → Low</option>
+                <option value="amount_asc">Amount: Low → High</option>
+              </select>
+            </div>
+
+            {/* Category Dropdown Filter */}
             <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shrink-0 transition-all ${
+              className={`h-9 flex items-center gap-1.5 px-3 rounded-xl border shrink-0 transition-all ${
                 selectedCategoryFilter !== 'all'
                   ? 'bg-[#006397] text-white border-[#006397] shadow-2xs'
-                  : 'bg-[#f3f4f5] border-[#c4c6cd]/20'
+                  : 'bg-[#f3f4f5] border-[#c4c6cd]/25 hover:bg-[#e1e3e4]/60'
               }`}
             >
               <span className={`material-symbols-outlined text-[16px] ${selectedCategoryFilter !== 'all' ? 'text-white' : 'text-[#006397]'}`}>
@@ -746,7 +838,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
               <select
                 value={selectedCategoryFilter}
                 onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
+                className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer pr-1 ${
                   selectedCategoryFilter !== 'all' ? 'text-white [&>option]:text-[#191c1d]' : 'text-[#191c1d]'
                 }`}
               >
@@ -763,7 +855,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedCategoryFilter('all')}
-                  className="material-symbols-outlined text-[15px] hover:text-red-200 ml-0.5 cursor-pointer"
+                  className="material-symbols-outlined text-[14px] hover:text-red-200 ml-0.5 cursor-pointer"
                   title="Clear category filter"
                 >
                   close
@@ -774,10 +866,10 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
             {/* Bank Account Filter Selector */}
             {accounts.length > 0 && (
               <div
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shrink-0 transition-all ${
+                className={`h-9 flex items-center gap-1.5 px-3 rounded-xl border shrink-0 transition-all ${
                   selectedAccountFilter !== 'all'
                     ? 'bg-[#006397] text-white border-[#006397] shadow-2xs'
-                    : 'bg-[#f3f4f5] border-[#c4c6cd]/20'
+                    : 'bg-[#f3f4f5] border-[#c4c6cd]/25 hover:bg-[#e1e3e4]/60'
                 }`}
               >
                 <span className={`material-symbols-outlined text-[16px] ${selectedAccountFilter !== 'all' ? 'text-white' : 'text-[#006397]'}`}>
@@ -786,7 +878,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                 <select
                   value={selectedAccountFilter}
                   onChange={(e) => setSelectedAccountFilter(e.target.value)}
-                  className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
+                  className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer pr-1 ${
                     selectedAccountFilter !== 'all' ? 'text-white [&>option]:text-[#191c1d]' : 'text-[#191c1d]'
                   }`}
                 >
@@ -801,7 +893,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedAccountFilter('all')}
-                    className="material-symbols-outlined text-[15px] hover:text-red-200 ml-0.5 cursor-pointer"
+                    className="material-symbols-outlined text-[14px] hover:text-red-200 ml-0.5 cursor-pointer"
                     title="Clear account filter"
                   >
                     close
@@ -810,13 +902,13 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
               </div>
             )}
 
-            {/* Family Member Filter Selector */}
-            {members.length > 0 && (
+            {/* Family Member Filter Selector - Only visible in combined view */}
+            {members.length > 0 && activeMemberId === 'all' && (
               <div
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shrink-0 transition-all ${
+                className={`h-9 flex items-center gap-1.5 px-3 rounded-xl border shrink-0 transition-all ${
                   selectedMemberFilter !== 'all'
                     ? 'bg-[#006397] text-white border-[#006397] shadow-2xs'
-                    : 'bg-[#f3f4f5] border-[#c4c6cd]/20'
+                    : 'bg-[#f3f4f5] border-[#c4c6cd]/25 hover:bg-[#e1e3e4]/60'
                 }`}
               >
                 <span className={`material-symbols-outlined text-[16px] ${selectedMemberFilter !== 'all' ? 'text-white' : 'text-[#006397]'}`}>
@@ -824,11 +916,8 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                 </span>
                 <select
                   value={selectedMemberFilter}
-                  onChange={(e) => {
-                    setSelectedMemberFilter(e.target.value);
-                    if (onSelectMember) onSelectMember(e.target.value);
-                  }}
-                  className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
+                  onChange={(e) => setSelectedMemberFilter(e.target.value)}
+                  className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer pr-1 ${
                     selectedMemberFilter !== 'all' ? 'text-white [&>option]:text-[#191c1d]' : 'text-[#191c1d]'
                   }`}
                 >
@@ -842,11 +931,8 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                 {selectedMemberFilter !== 'all' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedMemberFilter('all');
-                      if (onSelectMember) onSelectMember('all');
-                    }}
-                    className="material-symbols-outlined text-[15px] hover:text-red-200 ml-0.5 cursor-pointer"
+                    onClick={() => setSelectedMemberFilter('all')}
+                    className="material-symbols-outlined text-[14px] hover:text-red-200 ml-0.5 cursor-pointer"
                     title="Clear member filter"
                   >
                     close
@@ -855,105 +941,54 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
               </div>
             )}
 
-            {/* Sort Order Selector */}
-            <div className="flex items-center gap-1.5 bg-[#f3f4f5] px-3 py-1.5 rounded-xl border border-[#c4c6cd]/20 shrink-0">
-              <span className="material-symbols-outlined text-[#006397] text-[16px]">sort</span>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as any)}
-                className="bg-transparent text-xs font-bold text-[#191c1d] focus:outline-none cursor-pointer"
-              >
-                <option value="date_desc">Newest First</option>
-                <option value="date_asc">Oldest First</option>
-                <option value="amount_desc">Amount: High → Low</option>
-                <option value="amount_asc">Amount: Low → High</option>
-              </select>
-            </div>
-
-            {/* Tag / Person Filter Icon Button (Right-most side, icon only) */}
+            {/* Tag / Payee Filter Chip */}
             <button
               type="button"
               onClick={() => setShowTagModal(true)}
-              className={`flex items-center justify-center p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ml-auto shrink-0 ${
+              className={`h-9 flex items-center gap-1.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer shrink-0 ${
                 selectedPersonFilter !== 'all'
                   ? 'bg-[#006397] text-white border-[#006397] shadow-2xs'
-                  : 'bg-[#f3f4f5] text-[#44474c] border-[#c4c6cd]/20 hover:bg-[#e1e3e4] hover:text-[#191c1d]'
+                  : 'bg-[#f3f4f5] text-[#44474c] border-[#c4c6cd]/25 hover:bg-[#e1e3e4]/60 hover:text-[#191c1d]'
               }`}
-              title={selectedPersonFilter !== 'all' ? `Filter by Tag (Active: ${selectedPersonFilter})` : 'Filter by Tag / Person / Purpose'}
+              title={selectedPersonFilter !== 'all' ? `Filter by Tag (Active: ${selectedPersonFilter})` : 'Filter by Tag or Payee'}
             >
-              <span className="material-symbols-outlined text-[18px]">sell</span>
+              <span className={`material-symbols-outlined text-[16px] ${selectedPersonFilter !== 'all' ? 'text-white' : 'text-[#006397]'}`}>
+                sell
+              </span>
+              <span>{selectedPersonFilter !== 'all' ? selectedPersonFilter : 'Tags'}</span>
+              {selectedPersonFilter !== 'all' && (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedPersonFilter('all');
+                  }}
+                  className="material-symbols-outlined text-[14px] hover:text-red-200 ml-0.5 cursor-pointer"
+                  title="Clear tag filter"
+                >
+                  close
+                </span>
+              )}
             </button>
           </div>
-        </div>
 
-        {/* Bottom Row: Period Quick Filter Pills & Custom Date Range */}
-        <div className="pt-3 border-t border-[#e1e3e4] flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-              <span className="text-[11px] font-bold text-[#74777d] uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
-                <span className="material-symbols-outlined text-[15px] text-[#006397]">calendar_month</span>
-                Period:
-              </span>
-              {[
-                { id: 'all', label: 'All Time' },
-                { id: 'week', label: 'This Week' },
-                { id: 'month', label: 'This Month' },
-                { id: 'year', label: 'This Year' },
-                { id: 'custom', label: 'Custom' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setPeriodPreset(p.id as any);
-                    if (p.id === 'custom') {
-                      setShowDatePickerModal(true);
-                    }
-                  }}
-                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 ${
-                    periodPreset === p.id
-                      ? 'bg-[#006397] text-white shadow-2xs'
-                      : 'bg-[#f3f4f5] text-[#44474c] hover:bg-[#e1e3e4] hover:text-[#191c1d]'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Custom Date Badge & Trigger */}
-            {periodPreset === 'custom' && (
-              <button
-                onClick={() => setShowDatePickerModal(true)}
-                className="flex items-center gap-2 bg-[#006397]/10 hover:bg-[#006397]/20 border border-[#006397]/30 text-[#006397] px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 group"
-              >
-                <span className="material-symbols-outlined text-[16px]">date_range</span>
-                <span>
-                  {customStartDate || customEndDate
-                    ? `${customStartDate || 'Start'} to ${customEndDate || 'End'}`
-                    : 'Select Date Range...'}
-                </span>
-                <span className="material-symbols-outlined text-[14px] group-hover:translate-x-0.5 transition-transform">
-                  edit_calendar
-                </span>
-              </button>
-            )}
-          </div>
-
-          {/* Reset Filter Button directly below period selection - only visible when filters are applied */}
+          {/* Right Side: Clear / Reset Filters Button (When active) */}
           {hasActiveFilters && (
-            <div className="flex items-center justify-between pt-2.5 border-t border-[#e1e3e4]/60">
-              <button
-                onClick={resetAllFilters}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-all bg-[#ba1a1a]/10 hover:bg-[#ba1a1a] text-[#ba1a1a] hover:text-white border border-[#ba1a1a]/30 shadow-2xs cursor-pointer"
-                title="Reset all filters and period selections"
-              >
-                <span className="material-symbols-outlined text-[16px]">restart_alt</span>
-                <span>Reset Filters</span>
-              </button>
-              <span className="text-[11px] font-semibold text-[#006397] bg-[#006397]/10 px-2.5 py-0.5 rounded-full border border-[#006397]/20">
-                Filters Applied
+            <button
+              type="button"
+              onClick={resetAllFilters}
+              className="h-9 inline-flex items-center gap-1.5 px-3 text-xs font-bold rounded-xl transition-all bg-[#ba1a1a]/10 hover:bg-[#ba1a1a] text-[#ba1a1a] hover:text-white border border-[#ba1a1a]/25 shadow-2xs cursor-pointer ml-auto shrink-0 group"
+              title="Reset all filters to default"
+            >
+              <span className="material-symbols-outlined text-[16px] group-hover:rotate-180 transition-transform duration-300">
+                restart_alt
               </span>
-            </div>
+              <span>Reset Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-[#ba1a1a] text-white text-[10px] flex items-center justify-center font-black group-hover:bg-white group-hover:text-[#ba1a1a] transition-colors">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           )}
         </div>
       </div>
@@ -1114,22 +1149,27 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                           <span className="text-sm font-semibold text-[#191c1d]">
                             {tx.category}
                           </span>
-                          {tx.memberId && (
-                            <span
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-[#f0f4f8] text-[#475569] border border-[#d2e4fb]/80"
-                              title={`Family Member: ${members.find((m) => m.id === tx.memberId)?.name || 'Member'}`}
-                            >
-                              <span
-                                className="w-1.5 h-1.5 rounded-full"
-                                style={{
-                                  backgroundColor:
-                                    members.find((m) => m.id === tx.memberId)?.color || '#006397',
-                                }}
-                              />
-                              <span>
-                                {members.find((m) => m.id === tx.memberId)?.name || 'Member'}
-                              </span>
-                            </span>
+                          {selectedMemberFilter === 'all' && (
+                            (() => {
+                              const txMember = tx.memberId
+                                ? members.find((m) => m.id === tx.memberId)
+                                : members.find((m) => m.isDefault) || members[0];
+                              if (!txMember) return null;
+                              return (
+                                <span
+                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-[#f0f4f8] text-[#475569] border border-[#d2e4fb]/80"
+                                  title={`Added by: ${txMember.name}`}
+                                >
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full"
+                                    style={{
+                                      backgroundColor: txMember.color || '#006397',
+                                    }}
+                                  />
+                                  <span>{txMember.name}</span>
+                                </span>
+                              );
+                            })()
                           )}
                           {tx.type === 'expense' && tx.excludeFromBudget && (
                             <span

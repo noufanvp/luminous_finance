@@ -50,7 +50,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   onAddTransaction,
   setActiveTab,
 }) => {
-  const sym = config.currencySymbol || '$';
+  const sym = config.currencySymbol || '₹';
   const isAllFamily = activeMemberId === 'all';
   const defaultMember = members.find((m) => m.isDefault) || members[0];
 

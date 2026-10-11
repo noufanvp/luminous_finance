@@ -73,7 +73,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
 
-  const currencySymbol = config.currencySymbol || '$';
+  const currencySymbol = config.currencySymbol || '₹';
 
   const defaultMember = useMemo(() => members.find((m) => m.isDefault) || members[0], [members]);
 
