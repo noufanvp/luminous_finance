@@ -53,19 +53,28 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const sym = config.currencySymbol || '₹';
   const isAllFamily = activeMemberId === 'all';
   const defaultMember = members.find((m) => m.isDefault) || members[0];
+  const defaultMemId = defaultMember?.id || 'member-primary';
 
   const displayedAccounts = isAllFamily
     ? accounts
     : accounts.filter((a) => {
-        if (a.memberId) return a.memberId === activeMemberId;
-        return defaultMember ? defaultMember.id === activeMemberId : true;
+        const ownerId = a.memberId || defaultMemId;
+        return ownerId === activeMemberId;
       });
 
   const displayedTransactions = isAllFamily
     ? transactions
     : transactions.filter((t) => {
-        if (t.memberId) return t.memberId === activeMemberId;
-        return defaultMember ? defaultMember.id === activeMemberId : true;
+        const isTransfer = t.type === 'transfer' || t.isTransfer;
+        if (isTransfer) {
+          const fromAcc = accounts.find((a) => a.id === t.accountId);
+          const toAcc = accounts.find((a) => a.id === t.toAccountId);
+          const fromOwner = fromAcc?.memberId || defaultMemId;
+          const toOwner = toAcc?.memberId || defaultMemId;
+          return fromOwner === activeMemberId || toOwner === activeMemberId || t.memberId === activeMemberId;
+        }
+        const tMemberId = t.memberId || defaultMemId;
+        return tMemberId === activeMemberId;
       });
 
   const accountBalancesList = getAccountBalances(displayedAccounts, displayedTransactions);
@@ -88,6 +97,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [formColor, setFormColor] = useState('#006397');
   const [formIcon, setFormIcon] = useState('account_balance');
   const [formExcludeFromTotal, setFormExcludeFromTotal] = useState(false);
+  const [showExcludeHelp, setShowExcludeHelp] = useState(false);
+  const [formMemberId, setFormMemberId] = useState<string>(
+    activeMemberId !== 'all' ? activeMemberId : (defaultMember?.id || 'member-primary')
+  );
 
   // Transfer Modal State
   const [transferFromId, setTransferFromId] = useState('');
@@ -107,6 +120,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     setFormColor('#006397');
     setFormIcon('account_balance');
     setFormExcludeFromTotal(false);
+    setShowExcludeHelp(false);
+    setFormMemberId(activeMemberId !== 'all' ? activeMemberId : (defaultMember?.id || 'member-primary'));
     setShowAddModal(true);
   };
 
@@ -121,6 +136,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     setFormColor(acc.color || '#006397');
     setFormIcon(acc.icon || 'account_balance');
     setFormExcludeFromTotal(acc.excludeFromTotal || false);
+    setShowExcludeHelp(false);
+    setFormMemberId(acc.memberId || defaultMember?.id || 'member-primary');
     setShowAddModal(true);
   };
 
@@ -130,6 +147,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     if (!formName.trim()) return;
 
     const initialBal = parseFloat(formBalance) || 0;
+    const chosenMemberId = formMemberId || defaultMember?.id || 'member-primary';
 
     if (editingAccount) {
       onUpdateAccount(editingAccount.id, {
@@ -141,7 +159,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         color: formColor,
         icon: formIcon,
         excludeFromTotal: formExcludeFromTotal,
-        memberId: editingAccount.memberId,
+        memberId: chosenMemberId,
       });
     } else {
       onAddAccount({
@@ -153,7 +171,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         color: formColor,
         icon: formIcon,
         excludeFromTotal: formExcludeFromTotal,
-        memberId: activeMemberId && activeMemberId !== 'all' ? activeMemberId : undefined,
+        memberId: chosenMemberId,
       });
     }
 
@@ -181,9 +199,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
     const fromAcc = accounts.find((a) => a.id === transferFromId);
     const toAcc = accounts.find((a) => a.id === transferToId);
+    const fromOwnerId = fromAcc?.memberId || defaultMemId;
 
     onAddTransaction({
       type: 'transfer',
+      isTransfer: true,
       category: 'Transfer',
       title: `Transfer: ${fromAcc?.name || 'Account'} ➔ ${toAcc?.name || 'Account'}`,
       amount,
@@ -191,6 +211,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       memo: transferMemo.trim() || `Money transfer from ${fromAcc?.name} to ${toAcc?.name}`,
       accountId: transferFromId,
       toAccountId: transferToId,
+      memberId: fromOwnerId,
     });
 
     setShowTransferModal(false);
@@ -228,7 +249,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               )}
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight truncate max-w-full">
-              {sym}{netLiquidity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {netLiquidity < 0 ? '-' : ''}{sym}{Math.abs(netLiquidity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </h2>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-[#c4c6cd]">
               <span>Assets: <strong className="text-[#00a656] font-mono">{sym}{totalAssets.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></span>
@@ -240,7 +261,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             {isAllFamily ? (
               <div className="px-4 py-2.5 rounded-2xl bg-white/10 text-white/90 text-xs font-bold border border-white/15 flex items-center gap-2 backdrop-blur-md">
                 <span className="material-symbols-outlined text-[18px] text-[#92ccff]">diversity_3</span>
-                <span>Combined View (View Only)</span>
+                <span>Combined View</span>
               </div>
             ) : (
               <>
@@ -324,18 +345,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       <span className="text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-md bg-[#f0f4f8] text-[#006397]">
                         {acc.type}
                       </span>
-                      {/* Family Member Owner Badge */}
-                      {members.length > 0 && (
+                      {/* Family Member Owner Badge - ONLY in Combined View */}
+                      {isAllFamily && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-[#f8fafc] text-[#475569] border border-[#e2e8f0]">
                           <span
                             className="w-2 h-2 rounded-full"
                             style={{
                               backgroundColor:
-                                members.find((m) => m.id === acc.memberId)?.color || '#64748b',
+                                (members.find((m) => m.id === acc.memberId) || defaultMember)?.color || '#64748b',
                             }}
                           />
                           <span>
-                            {members.find((m) => m.id === acc.memberId)?.name || 'Joint / All'}
+                            {(members.find((m) => m.id === acc.memberId) || defaultMember)?.name}
                           </span>
                         </span>
                       )}
@@ -358,7 +379,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                           : 'text-[#ba1a1a]'
                       }`}
                     >
-                      {sym}{Math.abs(currentBal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {currentBal < 0 ? '-' : ''}{sym}{Math.abs(currentBal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       {isCredit && currentBal < 0 ? ' Owed' : ''}
                     </span>
                   </div>
@@ -445,6 +466,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             {transferTxs.map((tx) => {
               const fromAcc = accounts.find((a) => a.id === tx.accountId);
               const toAcc = accounts.find((a) => a.id === tx.toAccountId);
+              const fromOwner = members.find((m) => m.id === (fromAcc?.memberId || defaultMemId));
+              const toOwner = members.find((m) => m.id === (toAcc?.memberId || defaultMemId));
 
               return (
                 <div key={tx.id} className="py-3.5 flex items-center justify-between gap-3">
@@ -453,10 +476,26 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       <span className="material-symbols-outlined">sync_alt</span>
                     </div>
                     <div>
-                      <h4 className="font-bold text-[#041627] text-sm flex items-center gap-2">
-                        <span>{fromAcc?.name || 'Account'}</span>
+                      <h4 className="font-bold text-[#041627] text-sm flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>{fromAcc?.name || 'Account'}</span>
+                          {fromOwner && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f0f4f8] text-[#006397] border border-[#d2e4fb] inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: fromOwner.color || '#006397' }} />
+                              {fromOwner.name}
+                            </span>
+                          )}
+                        </span>
                         <span className="material-symbols-outlined text-[14px] text-[#74777d]">arrow_forward</span>
-                        <span>{toAcc?.name || 'Account'}</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>{toAcc?.name || 'Account'}</span>
+                          {toOwner && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f0f4f8] text-[#006397] border border-[#d2e4fb] inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: toOwner.color || '#006397' }} />
+                              {toOwner.name}
+                            </span>
+                          )}
+                        </span>
                       </h4>
                       <p className="text-xs text-[#74777d]">
                         {tx.date} {tx.memo ? `• ${tx.memo}` : ''}
@@ -509,6 +548,25 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[#e1e3e4] text-sm font-medium focus:ring-2 focus:ring-[#006397] focus:outline-none"
                 />
               </div>
+
+              {members.length > 1 && (
+                <div>
+                  <label className="text-xs font-extrabold text-[#041627] uppercase tracking-wider block mb-1">
+                    Account Owner
+                  </label>
+                  <select
+                    value={formMemberId}
+                    onChange={(e) => setFormMemberId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#e1e3e4] text-sm font-medium focus:ring-2 focus:ring-[#006397] focus:outline-none bg-white"
+                  >
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} {m.isDefault ? '(Primary)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -617,35 +675,50 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               </div>
 
               {/* Exclude From Total Toggle */}
-              <div className="p-3.5 bg-[#f8fafc] border border-[#e1e3e4] rounded-2xl flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${formExcludeFromTotal ? 'bg-[#ba1a1a]/15 text-[#ba1a1a]' : 'bg-[#006397]/10 text-[#006397]'}`}>
-                    <span className="material-symbols-outlined text-[18px]">
-                      {formExcludeFromTotal ? 'visibility_off' : 'visibility'}
-                    </span>
+              <div className="p-3.5 bg-[#f8fafc] border border-[#e1e3e4] rounded-2xl flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${formExcludeFromTotal ? 'bg-[#ba1a1a]/15 text-[#ba1a1a]' : 'bg-[#006397]/10 text-[#006397]'}`}>
+                      <span className="material-symbols-outlined text-[18px]">
+                        {formExcludeFromTotal ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-xs font-extrabold text-[#041627] cursor-pointer" onClick={() => setFormExcludeFromTotal(!formExcludeFromTotal)}>
+                        Exclude from Total Balance
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowExcludeHelp(!showExcludeHelp)}
+                        className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                          showExcludeHelp ? 'bg-[#006397] text-white' : 'text-[#74777d] hover:text-[#006397] hover:bg-[#e0f2fe]'
+                        }`}
+                        title={showExcludeHelp ? 'Hide info' : 'What does this do?'}
+                        aria-label="Explain exclude from total"
+                      >
+                        <span className="material-symbols-outlined text-[12px]">info</span>
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs font-extrabold text-[#041627] block cursor-pointer" onClick={() => setFormExcludeFromTotal(!formExcludeFromTotal)}>
-                      Exclude from Total Balance
-                    </label>
-                    <p className="text-[11px] text-[#74777d] leading-tight">
-                      Hide funds from Net Holdings & Total Available calculation
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setFormExcludeFromTotal(!formExcludeFromTotal)}
-                  className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
-                    formExcludeFromTotal ? 'bg-[#ba1a1a]' : 'bg-[#cbd5e1]'
-                  }`}
-                >
-                  <span
-                    className={`block w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                      formExcludeFromTotal ? 'translate-x-5' : 'translate-x-0.5'
+                  <button
+                    type="button"
+                    onClick={() => setFormExcludeFromTotal(!formExcludeFromTotal)}
+                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                      formExcludeFromTotal ? 'bg-[#ba1a1a]' : 'bg-[#cbd5e1]'
                     }`}
-                  />
-                </button>
+                  >
+                    <span
+                      className={`block w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
+                        formExcludeFromTotal ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+                {showExcludeHelp && (
+                  <p className="text-[11px] text-[#006397] leading-tight pl-10.5 animate-in fade-in duration-150">
+                    Hides funds from Net Holdings & Total Available calculation.
+                  </p>
+                )}
               </div>
 
               <div className="pt-2 flex gap-2">
@@ -675,10 +748,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         accounts={accounts}
         transactions={transactions}
         currencySymbol={sym}
+        members={members}
         initialFromAccountId={transferFromId}
         onTransfer={({ fromAccountId, toAccountId, amount, date, memo }) => {
           const fromAcc = accounts.find((a) => a.id === fromAccountId);
           const toAcc = accounts.find((a) => a.id === toAccountId);
+          const fromOwnerId = fromAcc?.memberId || defaultMemId;
           onAddTransaction({
             type: 'transfer',
             isTransfer: true,
@@ -689,6 +764,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             memo: memo || `Money transfer from ${fromAcc?.name} to ${toAcc?.name}`,
             accountId: fromAccountId,
             toAccountId: toAccountId,
+            memberId: fromOwnerId,
           });
           setShowTransferModal(false);
         }}

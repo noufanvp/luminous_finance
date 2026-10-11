@@ -56,6 +56,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [customSymbolInput, setCustomSymbolInput] = useState(sym);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+  const [showSyncInfo, setShowSyncInfo] = useState(false);
+  const [showAdvancedData, setShowAdvancedData] = useState(false);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser?.displayName || config.userName || '');
@@ -420,7 +422,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {currentUser && (
           <div className="flex flex-col gap-2.5 mt-1">
             <div className="bg-white/80 p-3.5 rounded-xl border border-[#006397]/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 text-[#006397] font-semibold">
+              <div className="flex items-center gap-2 text-[#006397] font-semibold flex-wrap">
                 <span className={`material-symbols-outlined text-[18px] ${syncStatus === 'syncing' ? 'text-[#0284c7] animate-spin' : syncStatus === 'error' ? 'text-[#c5221f]' : 'text-[#00a656]'}`}>
                   {syncStatus === 'syncing' ? 'sync' : syncStatus === 'error' ? 'sync_problem' : 'cloud_done'}
                 </span>
@@ -428,6 +430,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   Status: <strong>{syncStatus === 'syncing' ? 'Syncing with Firestore...' : syncStatus === 'error' ? 'Sync Issue / Quota Notice' : 'Real-time Cloud Synced'}</strong>
                   {lastSyncedAt && ` (${lastSyncedAt})`}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setShowSyncInfo(!showSyncInfo)}
+                  className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                    showSyncInfo
+                      ? 'bg-[#006397] text-white'
+                      : 'bg-[#e0f2fe] text-[#006397] hover:bg-[#bae6fd]'
+                  }`}
+                  title={showSyncInfo ? 'Hide verification instructions' : 'How to verify cross-device sync'}
+                  aria-label="Cross-device sync verification guide"
+                >
+                  <span className="material-symbols-outlined text-[14px]">info</span>
+                </button>
               </div>
               <button
                 onClick={onManualSync}
@@ -438,17 +453,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </button>
             </div>
 
-            <div className="p-3 bg-[#f8fafc] rounded-xl border border-[#e2e8f0] text-[11px] text-[#475569] space-y-1">
-              <p className="font-semibold text-[#1e293b] flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px] text-[#006397]">help_outline</span>
-                How to verify cross-device sync on Laptop & Mobile:
-              </p>
-              <ul className="list-disc pl-4 space-y-0.5 leading-relaxed">
-                <li>Confirm both devices display <strong>{currentUser.email}</strong> here.</li>
-                <li>Tap <strong>"Force Sync Now"</strong> on either device to trigger an instant cloud sync.</li>
-                <li>Add a transaction on your phone and watch it reflect live on your laptop screen!</li>
-              </ul>
-            </div>
+            {showSyncInfo && (
+              <div className="p-3.5 bg-[#f0f9ff] rounded-xl border border-[#bae6fd] text-[11px] text-[#475569] space-y-1.5 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-[#0c4a6e] flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[15px] text-[#0284c7]">info</span>
+                    How to verify cross-device sync on Laptop & Mobile:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowSyncInfo(false)}
+                    className="w-5 h-5 rounded-full hover:bg-[#e0f2fe] flex items-center justify-center text-[#0369a1] cursor-pointer"
+                    title="Close"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">close</span>
+                  </button>
+                </div>
+                <ul className="list-disc pl-5 space-y-0.5 leading-relaxed text-[#075985]">
+                  <li>Confirm both devices display <strong>{currentUser.email}</strong> here.</li>
+                  <li>Tap <strong>"Force Sync Now"</strong> on either device to trigger an instant cloud sync.</li>
+                  <li>Add a transaction on your phone and watch it reflect live on your laptop screen!</li>
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -765,35 +792,73 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {/* Data Operations */}
-      <div className="bg-white rounded-2xl p-6 shadow-ambient border border-[#e1e3e4] flex flex-col gap-4">
-        <h3 className="text-lg font-bold text-[#191c1d]">Data & Maintenance</h3>
+      {/* Advanced Data & Backups Accordion */}
+      <div className="bg-white rounded-2xl shadow-ambient border border-[#e1e3e4] overflow-hidden transition-all">
+        <button
+          type="button"
+          onClick={() => setShowAdvancedData(!showAdvancedData)}
+          className="w-full p-5 sm:p-6 flex items-center justify-between text-left hover:bg-[#f8f9fa] transition-colors cursor-pointer group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#006397]/10 text-[#006397] flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[20px]">database</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-[#191c1d]">Advanced Data & Backups</h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#f0f4f8] text-[#006397] border border-[#d2e4fb]">
+                  Tools
+                </span>
+              </div>
+              <p className="text-xs text-[#74777d] mt-0.5">
+                CSV import/export, data backups, and local reset tools
+              </p>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="py-3 px-4 bg-[#006397] text-white font-semibold text-sm rounded-xl hover:bg-[#00476e] transition-colors flex items-center justify-center gap-2 shadow-2xs"
-          >
-            <span className="material-symbols-outlined text-[18px]">file_upload</span>
-            Import CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <span className={`material-symbols-outlined text-[#74777d] group-hover:text-[#006397] transition-transform duration-200 ${
+              showAdvancedData ? 'rotate-180 text-[#006397]' : ''
+            }`}>
+              keyboard_arrow_down
+            </span>
+          </div>
+        </button>
 
-          <button
-            onClick={handleExportCSV}
-            className="py-3 px-4 bg-[#f3f4f5] text-[#006397] font-semibold text-sm rounded-xl hover:bg-[#e1e3e4] transition-colors flex items-center justify-center gap-2 border border-[#c4c6cd]/20"
-          >
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            Export CSV
-          </button>
+        {showAdvancedData && (
+          <div className="px-5 pb-5 sm:px-6 sm:pb-6 pt-1 border-t border-[#f0f4f8] space-y-3 animate-in fade-in duration-150">
+            <div className="p-3 bg-[#f8fafc] rounded-xl border border-[#e2e8f0] text-[11px] text-[#475569] flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px] text-[#006397] shrink-0">info</span>
+              <span>Export CSV records for spreadsheet backups, restore existing transactions, or reset demo state.</span>
+            </div>
 
-          <button
-            onClick={() => setShowResetConfirmModal(true)}
-            className="py-3 px-4 bg-[#ffdad6]/60 text-[#ba1a1a] font-semibold text-sm rounded-xl hover:bg-[#ffdad6] transition-colors flex items-center justify-center gap-2 border border-[#ba1a1a]/20 cursor-pointer active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[18px]">restart_alt</span>
-            Reset All Data
-          </button>
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="py-2.5 px-4 bg-[#006397] text-white font-semibold text-xs rounded-xl hover:bg-[#00476e] transition-colors flex items-center justify-center gap-2 shadow-2xs cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[16px]">file_upload</span>
+                Import CSV
+              </button>
+
+              <button
+                onClick={handleExportCSV}
+                className="py-2.5 px-4 bg-[#f3f4f5] text-[#006397] font-semibold text-xs rounded-xl hover:bg-[#e1e3e4] transition-colors flex items-center justify-center gap-2 border border-[#c4c6cd]/20 cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                Export CSV
+              </button>
+
+              <button
+                onClick={() => setShowResetConfirmModal(true)}
+                className="py-2.5 px-4 bg-[#ffdad6]/60 text-[#ba1a1a] font-semibold text-xs rounded-xl hover:bg-[#ffdad6] transition-colors flex items-center justify-center gap-2 border border-[#ba1a1a]/20 cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[16px]">restart_alt</span>
+                Reset All Data
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Import Transactions Modal */}

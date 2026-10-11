@@ -30,6 +30,7 @@ export const INITIAL_ACCOUNTS: BankAccount[] = [
     color: '#006397',
     icon: 'account_balance',
     isDefault: true,
+    memberId: 'member-primary',
   },
   {
     id: 'acc-2',
@@ -38,6 +39,7 @@ export const INITIAL_ACCOUNTS: BankAccount[] = [
     balance: 0,
     color: '#00a656',
     icon: 'savings',
+    memberId: 'member-primary',
   },
   {
     id: 'acc-3',
@@ -46,6 +48,7 @@ export const INITIAL_ACCOUNTS: BankAccount[] = [
     balance: 0,
     color: '#e11d48',
     icon: 'credit_card',
+    memberId: 'member-primary',
   },
   {
     id: 'acc-4',
@@ -54,6 +57,7 @@ export const INITIAL_ACCOUNTS: BankAccount[] = [
     balance: 0,
     color: '#d97706',
     icon: 'payments',
+    memberId: 'member-primary',
   },
 ];
 

@@ -79,6 +79,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
   const [excludeFromBudget, setExcludeFromBudget] = useState<boolean>(
     editingTransaction?.excludeFromBudget || false
   );
+  const [showExcludeBudgetHelp, setShowExcludeBudgetHelp] = useState(false);
 
   // Extract previous unique memo and title entries for auto-suggestions (most recent first)
   const previousMemos = useMemo(() => {
@@ -1139,35 +1140,51 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
 
         {/* Exclude from Budget Toggle Row (Only applicable for Expenses) */}
         {txType === 'expense' && (
-          <div className="pt-2 border-t border-[#f0f1f2] flex items-center justify-between text-xs">
-            <div className="flex flex-col">
-              <span className={`font-bold leading-tight ${excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
-                Exclude from Budget
-              </span>
-              <span className="text-[10px] text-[#74777d]">
+          <div className="pt-2 border-t border-[#f0f1f2] flex flex-col gap-1 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className={`font-bold leading-tight ${excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
+                  Exclude from Budget
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowExcludeBudgetHelp((prev) => !prev)}
+                  className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                    showExcludeBudgetHelp ? 'bg-[#006397] text-white' : 'text-[#74777d] hover:text-[#006397] hover:bg-[#e0f2fe]'
+                  }`}
+                  title={showExcludeBudgetHelp ? 'Hide info' : 'What does this do?'}
+                  aria-label="Explain exclude from budget"
+                >
+                  <span className="material-symbols-outlined text-[12px]">info</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setExcludeFromBudget((prev) => !prev)}
+                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
+                }`}
+                role="switch"
+                aria-checked={excludeFromBudget}
+                title={excludeFromBudget ? 'Excluded from budget. Click to include.' : 'Click to exclude from budget.'}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                    excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {showExcludeBudgetHelp && (
+              <span className="text-[10px] text-[#006397] block animate-in fade-in duration-150">
                 {excludeFromBudget
                   ? 'Ignored in category budget limits & daily pacing'
                   : 'Counts toward monthly target & category limits'}
               </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setExcludeFromBudget((prev) => !prev)}
-              className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
-              }`}
-              role="switch"
-              aria-checked={excludeFromBudget}
-              title={excludeFromBudget ? 'Excluded from budget. Click to include.' : 'Click to exclude from budget.'}
-            >
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                  excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
+            )}
           </div>
         )}
       </div>

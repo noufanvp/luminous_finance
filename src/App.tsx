@@ -81,7 +81,12 @@ export default function App() {
 
   const [accounts, setAccounts] = useState<BankAccount[]>(() => {
     const saved = localStorage.getItem('luminous_v2_accounts');
-    return saved ? JSON.parse(saved) : INITIAL_ACCOUNTS;
+    const list: BankAccount[] = saved ? JSON.parse(saved) : INITIAL_ACCOUNTS;
+    const migrated = list.map((a) => ({
+      ...a,
+      memberId: a.memberId || 'member-primary',
+    }));
+    return migrated;
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -477,6 +482,7 @@ export default function App() {
     const newAcc: BankAccount = {
       ...acc,
       id: `acc-${Date.now()}`,
+      memberId: acc.memberId || (activeMemberId !== 'all' ? activeMemberId : (members[0]?.id || 'member-primary')),
     };
     setAccounts((prev) => [...prev, newAcc]);
   };

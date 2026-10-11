@@ -34,13 +34,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const activeMember = members.find((m) => m.id === activeMemberId);
 
   // Filter transactions by active member if a specific member is selected
+  const defaultMemId = defaultMember?.id || 'member-primary';
   const activeTransactions = activeMemberId !== 'all'
-    ? transactions.filter((t) => (t.memberId ? t.memberId === activeMemberId : (defaultMember ? defaultMember.id === activeMemberId : true)))
+    ? transactions.filter((t) => {
+        if (t.isTransfer || t.type === 'transfer') {
+          const fromAcc = accounts.find((a) => a.id === t.accountId);
+          const toAcc = accounts.find((a) => a.id === t.toAccountId);
+          const fromOwner = fromAcc?.memberId || defaultMemId;
+          const toOwner = toAcc?.memberId || defaultMemId;
+          return fromOwner === activeMemberId || toOwner === activeMemberId || t.memberId === activeMemberId;
+        }
+        return t.memberId ? t.memberId === activeMemberId : (defaultMember ? defaultMember.id === activeMemberId : true);
+      })
     : transactions;
 
   // Filter accounts by active member if a specific member is selected
   const activeAccounts = activeMemberId !== 'all'
-    ? accounts.filter((a) => (a.memberId ? a.memberId === activeMemberId : (defaultMember ? defaultMember.id === activeMemberId : true)))
+    ? accounts.filter((a) => {
+        const ownerId = a.memberId || defaultMember?.id || 'member-primary';
+        return ownerId === activeMemberId;
+      })
     : accounts;
 
   // Family / Member Budget Goals:
@@ -601,6 +614,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <h4 className="text-xs font-bold text-[#041627] truncate">{acc.name}</h4>
                           <span className="text-[10px] text-[#44474c] font-medium capitalize block">
                             {acc.institution ? `${acc.institution} • ` : ''}{acc.type}
+                            {activeMemberId === 'all' && (
+                              <span> • {(members.find((m) => m.id === acc.memberId) || defaultMember)?.name}</span>
+                            )}
                             {acc.excludeFromTotal && ' • Excluded'}
                           </span>
                         </div>
@@ -608,9 +624,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                       <div className="text-right shrink-0">
                         <span className={`text-xs sm:text-sm font-extrabold font-mono block ${
-                          isCredit ? 'text-[#ba1a1a]' : currentBal < 0 ? 'text-[#ba1a1a]' : 'text-[#041627]'
+                          isCredit ? (currentBal < 0 ? 'text-[#ba1a1a]' : 'text-[#00a656]') : currentBal < 0 ? 'text-[#ba1a1a]' : 'text-[#041627]'
                         }`}>
-                          {isCredit && currentBal > 0 ? '-' : ''}{currentBal < 0 ? '-' : ''}{sym}{Math.abs(currentBal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {currentBal < 0 ? '-' : ''}{sym}{Math.abs(currentBal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </div>

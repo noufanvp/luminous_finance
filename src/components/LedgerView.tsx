@@ -178,6 +178,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(null);
   const [calendarViewMode, setCalendarViewMode] = useState<'grid' | 'list'>('grid');
   const [showCalendarInfo, setShowCalendarInfo] = useState(false);
+  const [showEditExcludeHelp, setShowEditExcludeHelp] = useState(false);
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
   const [showYearDropdown, setShowYearDropdown] = useState(false);
   const dayDetailsRef = useRef<HTMLDivElement>(null);
@@ -412,11 +413,23 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       // 2c. Family Member Filter
       if (selectedMemberFilter !== 'all') {
         const defaultMember = members.find((m) => m.isDefault) || members[0];
-        const isTxForMember = tx.memberId
-          ? tx.memberId === selectedMemberFilter
-          : defaultMember
-          ? defaultMember.id === selectedMemberFilter
-          : true;
+        const defaultMemId = defaultMember?.id || 'member-primary';
+        const isTransfer = tx.type === 'transfer' || tx.isTransfer;
+
+        let isTxForMember = false;
+        if (isTransfer) {
+          const fromAcc = accounts.find((a) => a.id === tx.accountId);
+          const toAcc = accounts.find((a) => a.id === tx.toAccountId);
+          const fromOwner = fromAcc?.memberId || defaultMemId;
+          const toOwner = toAcc?.memberId || defaultMemId;
+          isTxForMember = fromOwner === selectedMemberFilter || toOwner === selectedMemberFilter || tx.memberId === selectedMemberFilter;
+        } else {
+          isTxForMember = tx.memberId
+            ? tx.memberId === selectedMemberFilter
+            : defaultMember
+            ? defaultMember.id === selectedMemberFilter
+            : true;
+        }
         if (!isTxForMember) return false;
       }
 
@@ -1357,7 +1370,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
 
                 {activeMemberId === 'all' ? (
                   <div className="p-3 bg-[#f0f4f8] rounded-xl text-center text-xs text-[#44474c] font-medium border border-[#d2e4fb]">
-                    Viewing in <strong>All Family Combined Mode (View Only)</strong>. To edit or delete this transaction, switch to the owner's personal profile.
+                    Viewing in <strong>All Family Combined Mode</strong>. To edit or delete this transaction, switch to the owner's personal profile.
                   </div>
                 ) : (
                   <div className="flex gap-2">
@@ -1508,32 +1521,47 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
 
                 {/* Exclude from Budget Toggle (Only for Expense) */}
                 {editForm.type === 'expense' && (
-                  <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] flex items-center justify-between">
-                    <div>
-                      <span className={`text-xs font-bold block ${editForm.excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
-                        Exclude from Budget
-                      </span>
-                      <span className="text-[10px] text-[#74777d] block">
+                  <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs font-bold ${editForm.excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
+                          Exclude from Budget
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowEditExcludeHelp((prev) => !prev)}
+                          className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                            showEditExcludeHelp ? 'bg-[#006397] text-white' : 'text-[#74777d] hover:text-[#006397] hover:bg-[#e0f2fe]'
+                          }`}
+                          title={showEditExcludeHelp ? 'Hide info' : 'What does this do?'}
+                          aria-label="Explain exclude from budget"
+                        >
+                          <span className="material-symbols-outlined text-[12px]">info</span>
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditForm((prev) => ({ ...prev, excludeFromBudget: !prev.excludeFromBudget }))}
+                        className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          editForm.excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
+                        }`}
+                        role="switch"
+                        aria-checked={editForm.excludeFromBudget}
+                        title={editForm.excludeFromBudget ? 'Excluded from budget' : 'Click to exclude from budget'}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                            editForm.excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {showEditExcludeHelp && (
+                      <span className="text-[10px] text-[#006397] block animate-in fade-in duration-150">
                         {editForm.excludeFromBudget ? 'Ignored in budget limits & daily pacing' : 'Counts toward monthly target & category limits'}
                       </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setEditForm((prev) => ({ ...prev, excludeFromBudget: !prev.excludeFromBudget }))}
-                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        editForm.excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
-                      }`}
-                      role="switch"
-                      aria-checked={editForm.excludeFromBudget}
-                      title={editForm.excludeFromBudget ? 'Excluded from budget' : 'Click to exclude from budget'}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                          editForm.excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
+                    )}
                   </div>
                 )}
 

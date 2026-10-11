@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { BankAccount, Transaction } from '../types';
+import { BankAccount, Transaction, FamilyMember } from '../types';
 import { getAccountBalances, normalizeTransactionDate } from '../utils/finance';
 
 interface TransferMoneyModalProps {
@@ -8,6 +8,7 @@ interface TransferMoneyModalProps {
   accounts: BankAccount[];
   transactions: Transaction[];
   currencySymbol?: string;
+  members?: FamilyMember[];
   onTransfer: (data: {
     fromAccountId: string;
     toAccountId: string;
@@ -85,9 +86,10 @@ interface CustomAccountSelectProps {
   labelColorClass: string;
   selectedAccountId: string;
   disabledAccountId?: string;
-  accountBalances: Array<{ id: string; name: string; currentBalance: number; institution?: string; type?: string; color?: string }>;
+  accountBalances: Array<{ id: string; name: string; currentBalance: number; institution?: string; type?: string; color?: string; memberId?: string }>;
   currencySymbol: string;
   onSelect: (accId: string) => void;
+  members?: FamilyMember[];
 }
 
 const CustomAccountSelect: React.FC<CustomAccountSelectProps> = ({
@@ -98,6 +100,7 @@ const CustomAccountSelect: React.FC<CustomAccountSelectProps> = ({
   accountBalances,
   currencySymbol,
   onSelect,
+  members = [],
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -123,7 +126,7 @@ const CustomAccountSelect: React.FC<CustomAccountSelectProps> = ({
         </label>
         {selectedAcc && (
           <span className="text-[11px] font-semibold text-[#44474c]">
-            Avail: <strong className="text-[#006397] font-mono font-bold">{currencySymbol}{selectedAcc.currentBalance.toFixed(2)}</strong>
+            Avail: <strong className="text-[#006397] font-mono font-bold">{selectedAcc.currentBalance < 0 ? '-' : ''}{currencySymbol}{Math.abs(selectedAcc.currentBalance).toFixed(2)}</strong>
           </span>
         )}
       </div>
@@ -143,11 +146,24 @@ const CustomAccountSelect: React.FC<CustomAccountSelectProps> = ({
               <span className="material-symbols-outlined text-[16px]">account_balance</span>
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="text-xs sm:text-sm font-extrabold text-[#191c1d] truncate">
-                {selectedAcc.name}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="text-xs sm:text-sm font-extrabold text-[#191c1d] truncate">
+                  {selectedAcc.name}
+                </span>
+                {(() => {
+                  const defaultMem = members.find((m) => m.isDefault) || members[0];
+                  const owner = members.find((m) => m.id === selectedAcc.memberId) || (!selectedAcc.memberId ? defaultMem : undefined);
+                  if (!owner) return null;
+                  return (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-[#f0f4f8] text-[#006397] border border-[#d2e4fb] flex items-center gap-1 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: owner.color || '#006397' }} />
+                      <span>{owner.name}</span>
+                    </span>
+                  );
+                })()}
+              </div>
               <span className="text-[10px] text-[#74777d] truncate font-medium">
-                {selectedAcc.institution || selectedAcc.type || 'Account'} • {currencySymbol}{selectedAcc.currentBalance.toFixed(2)}
+                {selectedAcc.institution || selectedAcc.type || 'Account'} • {selectedAcc.currentBalance < 0 ? '-' : ''}{currencySymbol}{Math.abs(selectedAcc.currentBalance).toFixed(2)}
               </span>
             </div>
           </div>
@@ -192,10 +208,21 @@ const CustomAccountSelect: React.FC<CustomAccountSelectProps> = ({
                     <span className="material-symbols-outlined text-[16px]">account_balance</span>
                   </div>
                   <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-bold truncate">{acc.name}</span>
+                      {(() => {
+                        const defaultMem = members.find((m) => m.isDefault) || members[0];
+                        const owner = members.find((m) => m.id === acc.memberId) || (!acc.memberId ? defaultMem : undefined);
+                        if (!owner) return null;
+                        return (
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-[#f0f4f8] text-[#006397] border border-[#d2e4fb] flex items-center gap-1 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: owner.color || '#006397' }} />
+                            <span>{owner.name}</span>
+                          </span>
+                        );
+                      })()}
                       {isDisabled && (
-                        <span className="text-[9px] font-bold text-[#ba1a1a] bg-[#ba1a1a]/10 px-1.5 py-0.2 rounded">
+                        <span className="text-[9px] font-bold text-[#ba1a1a] bg-[#ba1a1a]/10 px-1.5 py-0.2 rounded shrink-0">
                           Selected as Source
                         </span>
                       )}
@@ -207,8 +234,8 @@ const CustomAccountSelect: React.FC<CustomAccountSelectProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 pl-2">
-                  <span className="text-xs font-mono font-extrabold text-[#006397]">
-                    {currencySymbol}{acc.currentBalance.toFixed(2)}
+                  <span className={`text-xs font-mono font-extrabold ${acc.currentBalance < 0 ? 'text-[#ba1a1a]' : 'text-[#006397]'}`}>
+                    {acc.currentBalance < 0 ? '-' : ''}{currencySymbol}{Math.abs(acc.currentBalance).toFixed(2)}
                   </span>
                   {isSelected && (
                     <span className="material-symbols-outlined text-[18px] text-[#006397]">
@@ -525,6 +552,7 @@ export const TransferMoneyModal: React.FC<TransferMoneyModalProps> = ({
   accounts,
   transactions,
   currencySymbol = '₹',
+  members = [],
   onTransfer,
   initialFromAccountId,
   initialToAccountId,
@@ -680,6 +708,7 @@ export const TransferMoneyModal: React.FC<TransferMoneyModalProps> = ({
                 disabledAccountId={toAccountId}
                 accountBalances={accountBalances}
                 currencySymbol={currencySymbol}
+                members={members}
                 onSelect={(accId) => setFromAccountId(accId)}
               />
 
@@ -696,7 +725,7 @@ export const TransferMoneyModal: React.FC<TransferMoneyModalProps> = ({
                     {isInsufficient ? '⚠️ Transfer exceeds available balance' : 'Balance after transfer:'}
                   </span>
                   <span className="font-mono font-bold">
-                    {currencySymbol}{(fromAcc.currentBalance - parsedAmount).toFixed(2)}
+                    {(fromAcc.currentBalance - parsedAmount) < 0 ? '-' : ''}{currencySymbol}{Math.abs(fromAcc.currentBalance - parsedAmount).toFixed(2)}
                   </span>
                 </div>
               )}
@@ -726,6 +755,7 @@ export const TransferMoneyModal: React.FC<TransferMoneyModalProps> = ({
                 disabledAccountId={fromAccountId}
                 accountBalances={accountBalances}
                 currencySymbol={currencySymbol}
+                members={members}
                 onSelect={(accId) => setToAccountId(accId)}
               />
 
@@ -734,7 +764,7 @@ export const TransferMoneyModal: React.FC<TransferMoneyModalProps> = ({
                 <div className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#00a656]/10 text-[#008243] flex items-center justify-between">
                   <span>New balance after transfer:</span>
                   <span className="font-mono font-bold">
-                    {currencySymbol}{(toAcc.currentBalance + parsedAmount).toFixed(2)}
+                    {(toAcc.currentBalance + parsedAmount) < 0 ? '-' : ''}{currencySymbol}{Math.abs(toAcc.currentBalance + parsedAmount).toFixed(2)}
                   </span>
                 </div>
               )}
