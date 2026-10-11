@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { TabType, BudgetConfig } from '../types';
+import { TabType, BudgetConfig, FamilyMember } from '../types';
+import { FamilyMemberSwitcher } from './FamilyMemberSwitcher';
 
 interface HeaderProps {
   activeTab: TabType;
@@ -7,6 +8,10 @@ interface HeaderProps {
   config: BudgetConfig;
   totalIncome: number;
   totalExpenses: number;
+  members?: FamilyMember[];
+  activeMemberId?: string;
+  onSelectMember?: (id: string) => void;
+  onOpenManageModal?: () => void;
   currentUser?: { displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
   onLoginWithGoogle?: () => void;
   onLogoutGoogle?: () => void;
@@ -21,6 +26,10 @@ export const Header: React.FC<HeaderProps> = ({
   config,
   totalIncome,
   totalExpenses,
+  members = [],
+  activeMemberId = 'all',
+  onSelectMember = () => {},
+  onOpenManageModal,
   currentUser,
   onLoginWithGoogle,
   onLogoutGoogle,
@@ -112,8 +121,17 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            {/* Trailing: Wallet Icon Button & Google Login Button */}
-            <div className="flex items-center gap-2">
+            {/* Trailing: Family Member Switcher + Wallet Icon Button & Google Login Button */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {members.length > 0 && (
+                <FamilyMemberSwitcher
+                  members={members}
+                  activeMemberId={activeMemberId}
+                  onSelectMember={onSelectMember}
+                  onOpenManageModal={onOpenManageModal}
+                />
+              )}
+
               {currentUser ? (
                 <button
                   onClick={onManualSync}

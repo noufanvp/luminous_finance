@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Transaction, TabType, BudgetConfig, CategoryTemplate, TransactionType, BankAccount } from '../types';
+import { Transaction, TabType, BudgetConfig, CategoryTemplate, TransactionType, BankAccount, FamilyMember } from '../types';
 import { CustomDateRangePicker } from './CustomDateRangePicker';
 import { ImportTransactionsModal } from './ImportTransactionsModal';
 import { normalizeTransactionDate, parseTransactionDate } from '../utils/finance';
@@ -7,6 +7,9 @@ import { normalizeTransactionDate, parseTransactionDate } from '../utils/finance
 interface LedgerViewProps {
   transactions: Transaction[];
   accounts?: BankAccount[];
+  members?: FamilyMember[];
+  activeMemberId?: string;
+  onSelectMember?: (id: string) => void;
   onDeleteTransaction: (id: string) => void;
   onUpdateTransaction?: (id: string, updatedFields: Partial<Transaction>) => void;
   onStartEditTransaction?: (tx: Transaction) => void;
@@ -77,6 +80,9 @@ const getDisplayDateString = (dateStr: string) => {
 export const LedgerView: React.FC<LedgerViewProps> = ({
   transactions,
   accounts = [],
+  members = [],
+  activeMemberId = 'all',
+  onSelectMember,
   onDeleteTransaction,
   onUpdateTransaction,
   onStartEditTransaction,
@@ -96,11 +102,19 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
   const [selectedPersonFilter, setSelectedPersonFilter] = useState<string>('all');
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>(activeMemberId || 'all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [showDatePickerModal, setShowDatePickerModal] = useState(false);
   const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>('date_desc');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Sync selectedMemberFilter with activeMemberId
+  useEffect(() => {
+    if (activeMemberId) {
+      setSelectedMemberFilter(activeMemberId);
+    }
+  }, [activeMemberId]);
 
   // Tag selection modal state
   const [showTagModal, setShowTagModal] = useState(false);
@@ -207,6 +221,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     memo: string;
     person: string;
     date: string;
+    excludeFromBudget: boolean;
   }>({
     type: 'expense',
     category: '',
@@ -215,6 +230,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     memo: '',
     person: '',
     date: '',
+    excludeFromBudget: false,
   });
 
   // Lock body scroll when modal is open
@@ -318,6 +334,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       memo: tx.memo || '',
       person: tx.person || tx.payee || tx.tag || '',
       date: tx.date || '',
+      excludeFromBudget: tx.excludeFromBudget || false,
     });
     setIsEditing(true);
   };
@@ -339,6 +356,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       payee: personText || undefined,
       tag: personText || undefined,
       date: normalizeTransactionDate(editForm.date),
+      excludeFromBudget: editForm.type === 'expense' && editForm.excludeFromBudget ? true : undefined,
     };
 
     onUpdateTransaction(selectedTx.id, updated);
@@ -388,6 +406,17 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
         const matchesSource = tx.accountId === selectedAccountFilter;
         const matchesDest = tx.toAccountId === selectedAccountFilter;
         if (!matchesSource && !matchesDest) return false;
+      }
+
+      // 2c. Family Member Filter
+      if (selectedMemberFilter !== 'all') {
+        const defaultMember = members.find((m) => m.isDefault) || members[0];
+        const isTxForMember = tx.memberId
+          ? tx.memberId === selectedMemberFilter
+          : defaultMember
+          ? defaultMember.id === selectedMemberFilter
+          : true;
+        if (!isTxForMember) return false;
       }
 
       // 3. Person / Payee Filter
@@ -443,7 +472,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
 
       return true;
     });
-  }, [transactions, filterType, selectedCategoryFilter, selectedPersonFilter, searchQuery, periodPreset, customStartDate, customEndDate]);
+  }, [transactions, filterType, selectedCategoryFilter, selectedAccountFilter, selectedPersonFilter, selectedMemberFilter, searchQuery, periodPreset, customStartDate, customEndDate]);
 
   // Sorted transactions
   const sortedTransactions = useMemo(() => {
@@ -517,18 +546,73 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     setSearchQuery('');
   };
 
-  const getCategoryIcon = (category: string, type: 'expense' | 'income') => {
-    if (type === 'income') return 'payments';
-    const map: Record<string, string> = {
-      'Dining': 'restaurant',
-      'Dining Out': 'local_dining',
-      'Groceries': 'shopping_cart',
-      'Transport': 'local_gas_station',
-      'Health': 'monitor_heart',
-      'Rent': 'home',
-      'Clothing': 'checkroom'
-    };
-    return map[category] || 'receipt_long';
+  const getCategoryTemplate = (category: string, type?: TransactionType | string) => {
+    if (!category) return null;
+    const catTrim = category.trim().toLowerCase();
+    
+    // 1. Exact match (by name and optionally type)
+    const exact = categories.find((c) => c.name.trim().toLowerCase() === catTrim && (!type || c.type === type))
+      || categories.find((c) => c.name.trim().toLowerCase() === catTrim);
+    if (exact) return exact;
+
+    // 2. Partial match (name contains category or vice versa)
+    const partial = categories.find((c) => {
+      const cName = c.name.trim().toLowerCase();
+      return (cName.includes(catTrim) || catTrim.includes(cName)) && (!type || c.type === type);
+    }) || categories.find((c) => {
+      const cName = c.name.trim().toLowerCase();
+      return cName.includes(catTrim) || catTrim.includes(cName);
+    });
+    if (partial) return partial;
+
+    return null;
+  };
+
+  const getCategoryIcon = (category: string, type: 'expense' | 'income' | 'transfer' = 'expense') => {
+    if (type === 'transfer') return 'sync_alt';
+
+    // 1. Check matching category template from config/props
+    const matched = getCategoryTemplate(category, type);
+    if (matched?.icon) return matched.icon;
+
+    const catTrim = (category || '').trim().toLowerCase();
+
+    // 2. Semantic keyword fallback for income
+    if (type === 'income') {
+      if (catTrim.includes('salary') || catTrim.includes('wage') || catTrim.includes('paycheck') || catTrim.includes('payroll')) return 'payments';
+      if (catTrim.includes('freelance') || catTrim.includes('consult') || catTrim.includes('contract') || catTrim.includes('client')) return 'work';
+      if (catTrim.includes('invest') || catTrim.includes('dividend') || catTrim.includes('stock') || catTrim.includes('crypto')) return 'trending_up';
+      if (catTrim.includes('gift') || catTrim.includes('bonus') || catTrim.includes('reward') || catTrim.includes('prize')) return 'card_giftcard';
+      if (catTrim.includes('side') || catTrim.includes('hustle') || catTrim.includes('store') || catTrim.includes('shop')) return 'storefront';
+      if (catTrim.includes('refund') || catTrim.includes('cashback')) return 'currency_exchange';
+      return 'payments';
+    }
+
+    // 3. Semantic keyword fallback for expenses
+    if (catTrim.includes('groc') || catTrim.includes('market') || (catTrim.includes('food') && !catTrim.includes('restaurant'))) return 'shopping_cart';
+    if (catTrim.includes('dining') || catTrim.includes('dine') || catTrim.includes('restaurant') || catTrim.includes('cafe') || catTrim.includes('coffee') || catTrim.includes('fastfood') || catTrim.includes('bar') || catTrim.includes('pizza') || catTrim.includes('bakery')) return 'restaurant';
+    if (catTrim.includes('rent') || catTrim.includes('hous') || catTrim.includes('mortgage') || catTrim.includes('apartment') || catTrim.includes('home')) return 'home';
+    if (catTrim.includes('util') || catTrim.includes('bill') || catTrim.includes('power') || catTrim.includes('electr') || catTrim.includes('water') || catTrim.includes('internet') || catTrim.includes('wifi')) return 'bolt';
+    if (catTrim.includes('transp') || catTrim.includes('gas') || catTrim.includes('fuel') || catTrim.includes('car') || catTrim.includes('auto') || catTrim.includes('uber') || catTrim.includes('lyft') || catTrim.includes('taxi') || catTrim.includes('transit') || catTrim.includes('bus') || catTrim.includes('train')) return 'directions_car';
+    if (catTrim.includes('entert') || catTrim.includes('game') || catTrim.includes('movie') || catTrim.includes('cinema') || catTrim.includes('fun') || catTrim.includes('music') || catTrim.includes('leisure')) return 'sports_esports';
+    if (catTrim.includes('shop') || catTrim.includes('cloth') || catTrim.includes('apparel') || catTrim.includes('mall') || catTrim.includes('shoe') || catTrim.includes('wear')) return 'shopping_bag';
+    if (catTrim.includes('health') || catTrim.includes('medic') || catTrim.includes('doctor') || catTrim.includes('hospital') || catTrim.includes('fit') || catTrim.includes('gym') || catTrim.includes('pharmacy') || catTrim.includes('care')) return 'fitness_center';
+    if (catTrim.includes('sub') || catTrim.includes('tech') || catTrim.includes('soft') || catTrim.includes('cloud') || catTrim.includes('app') || catTrim.includes('stream') || catTrim.includes('netflix')) return 'subscriptions';
+    if (catTrim.includes('travel') || catTrim.includes('flight') || catTrim.includes('hotel') || catTrim.includes('airline') || catTrim.includes('trip') || catTrim.includes('vacation')) return 'flight';
+    if (catTrim.includes('edu') || catTrim.includes('school') || catTrim.includes('book') || catTrim.includes('course') || catTrim.includes('tutor') || catTrim.includes('tuition')) return 'school';
+    if (catTrim.includes('beauty') || catTrim.includes('salon') || catTrim.includes('hair') || catTrim.includes('barber') || catTrim.includes('spa') || catTrim.includes('cosmetic')) return 'face';
+    if (catTrim.includes('pet') || catTrim.includes('vet') || catTrim.includes('dog') || catTrim.includes('cat')) return 'pets';
+    if (catTrim.includes('insur') || catTrim.includes('policy')) return 'shield';
+    if (catTrim.includes('charity') || catTrim.includes('donat')) return 'volunteer_activism';
+
+    return 'receipt_long';
+  };
+
+  const getCategoryColor = (category: string, type: 'expense' | 'income' | 'transfer' = 'expense') => {
+    if (type === 'income') return '#00a656';
+    if (type === 'transfer') return '#006397';
+    const matched = getCategoryTemplate(category, type);
+    return matched?.color || '#006397';
   };
 
   const handleExportCSV = () => {
@@ -719,6 +803,51 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                     onClick={() => setSelectedAccountFilter('all')}
                     className="material-symbols-outlined text-[15px] hover:text-red-200 ml-0.5 cursor-pointer"
                     title="Clear account filter"
+                  >
+                    close
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Family Member Filter Selector */}
+            {members.length > 0 && (
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shrink-0 transition-all ${
+                  selectedMemberFilter !== 'all'
+                    ? 'bg-[#006397] text-white border-[#006397] shadow-2xs'
+                    : 'bg-[#f3f4f5] border-[#c4c6cd]/20'
+                }`}
+              >
+                <span className={`material-symbols-outlined text-[16px] ${selectedMemberFilter !== 'all' ? 'text-white' : 'text-[#006397]'}`}>
+                  diversity_3
+                </span>
+                <select
+                  value={selectedMemberFilter}
+                  onChange={(e) => {
+                    setSelectedMemberFilter(e.target.value);
+                    if (onSelectMember) onSelectMember(e.target.value);
+                  }}
+                  className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
+                    selectedMemberFilter !== 'all' ? 'text-white [&>option]:text-[#191c1d]' : 'text-[#191c1d]'
+                  }`}
+                >
+                  <option value="all">All Family ({members.length})</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.role || 'Member'})
+                    </option>
+                  ))}
+                </select>
+                {selectedMemberFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMemberFilter('all');
+                      if (onSelectMember) onSelectMember('all');
+                    }}
+                    className="material-symbols-outlined text-[15px] hover:text-red-200 ml-0.5 cursor-pointer"
+                    title="Clear member filter"
                   >
                     close
                   </button>
@@ -970,20 +1099,45 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                   >
                     <div className="flex items-center gap-4">
                       <div
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                          tx.type === 'income'
-                            ? 'bg-[#4ae183]/20 text-[#00a656] group-hover:bg-[#4ae183]/30'
-                            : 'bg-[#edeeef] text-[#191c1d] group-hover:bg-[#e1e3e4]'
-                        }`}
+                        className="w-12 h-12 rounded-xl flex items-center justify-center transition-colors shrink-0"
+                        style={{
+                          backgroundColor: `${getCategoryColor(tx.category, tx.type)}18`,
+                          color: getCategoryColor(tx.category, tx.type),
+                        }}
                       >
                         <span className="material-symbols-outlined text-[22px]">
                           {getCategoryIcon(tx.category, tx.type)}
                         </span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-[#191c1d]">
-                          {tx.category}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-semibold text-[#191c1d]">
+                            {tx.category}
+                          </span>
+                          {tx.memberId && (
+                            <span
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-[#f0f4f8] text-[#475569] border border-[#d2e4fb]/80"
+                              title={`Family Member: ${members.find((m) => m.id === tx.memberId)?.name || 'Member'}`}
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    members.find((m) => m.id === tx.memberId)?.color || '#006397',
+                                }}
+                              />
+                              <span>
+                                {members.find((m) => m.id === tx.memberId)?.name || 'Member'}
+                              </span>
+                            </span>
+                          )}
+                          {tx.type === 'expense' && tx.excludeFromBudget && (
+                            <span
+                              className="w-2 h-2 rounded-full bg-[#ba1a1a]/80 shrink-0"
+                              title="Excluded from budget"
+                            />
+                          )}
+                        </div>
                         {tx.memo ? (
                           <span className="text-xs text-[#44474c]">
                             {tx.memo}
@@ -1080,9 +1234,11 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
               <>
                 <div className="flex items-center gap-3 mb-4">
                   <div
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                      selectedTx.type === 'income' ? 'bg-[#4ae183]/20 text-[#00a656]' : 'bg-[#edeeef] text-[#006397]'
-                    }`}
+                    className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                    style={{
+                      backgroundColor: `${getCategoryColor(selectedTx.category, selectedTx.type)}18`,
+                      color: getCategoryColor(selectedTx.category, selectedTx.type),
+                    }}
                   >
                     <span className="material-symbols-outlined text-[24px]">
                       {getCategoryIcon(selectedTx.category, selectedTx.type)}
@@ -1113,6 +1269,23 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                       {selectedTx.type === 'income' ? '+' : '-'}{sym}{selectedTx.amount.toFixed(2)}
                     </span>
                   </div>
+                  {selectedTx.memberId && (
+                    <div className="flex justify-between text-sm items-center">
+                      <span className="text-[#44474c]">Family Member:</span>
+                      <span className="font-bold text-[#006397] flex items-center gap-1.5 bg-[#f0f4f8] px-2 py-0.5 rounded-lg border border-[#d2e4fb]/60 text-xs">
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{
+                            backgroundColor:
+                              members.find((m) => m.id === selectedTx.memberId)?.color || '#006397',
+                          }}
+                        />
+                        <span>
+                          {members.find((m) => m.id === selectedTx.memberId)?.name || 'Member'}
+                        </span>
+                      </span>
+                    </div>
+                  )}
                   {(selectedTx.person || selectedTx.payee || selectedTx.tag) && (
                     <div className="flex justify-between text-sm">
                       <span className="text-[#44474c]">Tag / Person / Purpose:</span>
@@ -1128,38 +1301,50 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                       <span className="font-medium text-[#191c1d]">{selectedTx.memo}</span>
                     </div>
                   )}
-                  {selectedTx.rawExpression && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-[#44474c]">Math Expression:</span>
-                      <span className="font-mono text-xs text-[#006397]">{selectedTx.rawExpression}</span>
+                  {selectedTx.type === 'expense' && (
+                    <div className="flex justify-between text-sm items-center">
+                      <span className="text-[#44474c]">Budget:</span>
+                      <span className={`font-bold text-xs px-2.5 py-0.5 rounded-full ${
+                        selectedTx.excludeFromBudget
+                          ? 'bg-[#f3f4f5] text-[#74777d] border border-[#c4c6cd]/30'
+                          : 'bg-[#006397]/10 text-[#006397]'
+                      }`}>
+                        {selectedTx.excludeFromBudget ? 'Excluded' : 'Included'}
+                      </span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      if (onStartEditTransaction) {
-                        onStartEditTransaction(selectedTx);
-                        setSelectedTx(null);
-                      } else {
-                        handleStartEditing(selectedTx);
-                      }
-                      setShowDeleteConfirm(false);
-                    }}
-                    className="flex-1 py-2.5 bg-[#006397] text-white font-semibold text-sm rounded-xl hover:bg-[#00476e] transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">edit</span>
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="flex-1 py-2.5 bg-[#ffdad6] text-[#ba1a1a] font-semibold text-sm rounded-xl hover:bg-[#ba1a1a] hover:text-white transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                    Delete
-                  </button>
-                </div>
+                {activeMemberId === 'all' ? (
+                  <div className="p-3 bg-[#f0f4f8] rounded-xl text-center text-xs text-[#44474c] font-medium border border-[#d2e4fb]">
+                    Viewing in <strong>All Family Combined Mode (View Only)</strong>. To edit or delete this transaction, switch to the owner's personal profile.
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (onStartEditTransaction) {
+                          onStartEditTransaction(selectedTx);
+                          setSelectedTx(null);
+                        } else {
+                          handleStartEditing(selectedTx);
+                        }
+                        setShowDeleteConfirm(false);
+                      }}
+                      className="flex-1 py-2.5 bg-[#006397] text-white font-semibold text-sm rounded-xl hover:bg-[#00476e] transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">edit</span>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="flex-1 py-2.5 bg-[#ffdad6] text-[#ba1a1a] font-semibold text-sm rounded-xl hover:bg-[#ba1a1a] hover:text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">delete</span>
+                      Delete
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <div className="space-y-4 pt-1">
@@ -1280,6 +1465,37 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                     className="w-full px-3 py-2 bg-[#f8f9fa] border border-[#c4c6cd]/50 rounded-xl text-sm font-medium text-[#191c1d] focus:outline-none focus:border-[#006397]"
                   />
                 </div>
+
+                {/* Exclude from Budget Toggle (Only for Expense) */}
+                {editForm.type === 'expense' && (
+                  <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] flex items-center justify-between">
+                    <div>
+                      <span className={`text-xs font-bold block ${editForm.excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
+                        Exclude from Budget
+                      </span>
+                      <span className="text-[10px] text-[#74777d] block">
+                        {editForm.excludeFromBudget ? 'Ignored in budget limits & daily pacing' : 'Counts toward monthly target & category limits'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditForm((prev) => ({ ...prev, excludeFromBudget: !prev.excludeFromBudget }))}
+                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        editForm.excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
+                      }`}
+                      role="switch"
+                      aria-checked={editForm.excludeFromBudget}
+                      title={editForm.excludeFromBudget ? 'Excluded from budget' : 'Click to exclude from budget'}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                          editForm.excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
 
                 {/* Edit Actions */}
                 <div className="flex gap-2 pt-2">
@@ -1689,9 +1905,17 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                                   className="bg-white p-2.5 rounded-xl border border-[#c4c6cd]/20 flex items-center justify-between text-xs shadow-2xs"
                                 >
                                   <div className="flex items-center gap-2">
-                                    <span className={`w-2 h-2 rounded-full ${
-                                      tx.type === 'expense' ? 'bg-[#ba1a1a]' : 'bg-[#00a656]'
-                                    }`} />
+                                    <div
+                                      className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                                      style={{
+                                        backgroundColor: `${getCategoryColor(tx.category, tx.type)}20`,
+                                        color: getCategoryColor(tx.category, tx.type),
+                                      }}
+                                    >
+                                      <span className="material-symbols-outlined text-[14px]">
+                                        {getCategoryIcon(tx.category, tx.type)}
+                                      </span>
+                                    </div>
                                     <div>
                                       <span className="font-bold text-[#191c1d]">{tx.category}</span>
                                       {tx.memo && <span className="text-[#74777d] ml-1.5 text-[11px]">({tx.memo})</span>}

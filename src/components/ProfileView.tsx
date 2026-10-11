@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BudgetConfig, Transaction, BankAccount, CURRENCY_OPTIONS } from '../types';
+import { BudgetConfig, Transaction, BankAccount, CURRENCY_OPTIONS, FamilyMember } from '../types';
 import { ImportTransactionsModal } from './ImportTransactionsModal';
 import { updateUserProfileName } from '../firebase';
 import { getGeminiApiKey, setGeminiApiKey } from '../services/gemini';
@@ -11,6 +11,13 @@ interface ProfileViewProps {
   onResetDemoData: () => void;
   onImportTransactions?: (imported: Transaction[], replaceAll?: boolean) => void;
   accounts?: BankAccount[];
+  members?: FamilyMember[];
+  activeMemberId?: string;
+  onSelectMember?: (id: string) => void;
+  onAddMember?: (member: Omit<FamilyMember, 'id'>) => void;
+  onUpdateMember?: (id: string, updated: Partial<FamilyMember>) => void;
+  onDeleteMember?: (id: string) => void;
+  onOpenFamilyModal?: () => void;
   currentUser?: { displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
   onLoginWithGoogle?: () => void;
   onLogoutGoogle?: () => void;
@@ -26,6 +33,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onResetDemoData,
   onImportTransactions,
   accounts = [],
+  members = [],
+  activeMemberId = 'all',
+  onSelectMember = (_id: string) => {},
+  onAddMember,
+  onUpdateMember,
+  onDeleteMember,
+  onOpenFamilyModal,
   currentUser,
   onLoginWithGoogle,
   onLogoutGoogle,
@@ -407,6 +421,110 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Family Members & Profiles Management Card */}
+      <div className="bg-white rounded-2xl p-6 shadow-ambient border border-[#e1e3e4] flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-[#191c1d] flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#006397]">diversity_3</span>
+              Family Members & Accounts
+            </h3>
+            <p className="text-xs text-[#44474c] mt-0.5">
+              Manage multi-person family profiles under this email login. Tag transactions, assign bank accounts, and seamlessly switch active member views.
+            </p>
+          </div>
+          {onOpenFamilyModal && (
+            <button
+              onClick={onOpenFamilyModal}
+              className="px-4 py-2 bg-[#006397] hover:bg-[#00476e] text-white font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[16px]">person_add</span>
+              <span>Manage Profiles</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-1">
+          {/* All Family Combined Pill */}
+          <div
+            onClick={() => onSelectMember('all')}
+            className={`p-3.5 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+              activeMemberId === 'all'
+                ? 'bg-[#e0f2fe] border-[#38bdf8] shadow-xs ring-1 ring-[#0284c7]'
+                : 'bg-[#f8f9fa] border-[#e1e3e4] hover:bg-[#f0f4f8]'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#006397] to-[#0284c7] text-white flex items-center justify-center shadow-xs">
+                <span className="material-symbols-outlined text-[18px]">diversity_3</span>
+              </div>
+              <div>
+                <div className="text-xs font-bold text-[#041627] flex items-center gap-1">
+                  <span>All Family</span>
+                  {activeMemberId === 'all' && (
+                    <span className="px-1.5 py-0.2 bg-[#006397] text-white text-[9px] font-extrabold rounded-full">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] text-[#44474c]">Combined aggregate</div>
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-[18px] text-[#006397]">
+              {activeMemberId === 'all' ? 'radio_button_checked' : 'radio_button_unchecked'}
+            </span>
+          </div>
+
+          {/* Individual Members */}
+          {members.map((m) => {
+            const isSelected = activeMemberId === m.id;
+            const txCount = transactions.filter((t) => t.memberId === m.id).length;
+
+            return (
+              <div
+                key={m.id}
+                onClick={() => onSelectMember(m.id)}
+                className={`p-3.5 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                  isSelected
+                    ? 'bg-[#f0fdf4] border-[#86efac] shadow-xs ring-1 ring-[#22c55e]'
+                    : 'bg-[#f8f9fa] border-[#e1e3e4] hover:bg-[#f0f4f8]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="w-9 h-9 rounded-xl text-white font-extrabold text-sm flex items-center justify-center shadow-xs shrink-0"
+                    style={{ backgroundColor: m.color || '#006397' }}
+                  >
+                    {m.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-[#041627] flex items-center gap-1">
+                      <span>{m.name}</span>
+                      {m.isDefault && (
+                        <span className="px-1.5 py-0.2 bg-[#f0f4f8] text-[#006397] text-[9px] font-bold rounded border border-[#d2e4fb]">
+                          Primary
+                        </span>
+                      )}
+                      {isSelected && (
+                        <span className="px-1.5 py-0.2 bg-[#00a656] text-white text-[9px] font-extrabold rounded-full">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-[#44474c]">
+                      {m.role || 'Member'} • {txCount} txs
+                    </div>
+                  </div>
+                </div>
+                <span className="material-symbols-outlined text-[18px] text-[#00a656]">
+                  {isSelected ? 'radio_button_checked' : 'radio_button_unchecked'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Gemini AI API Key Configuration Card */}

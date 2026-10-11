@@ -1,4 +1,14 @@
-import { Transaction, FixedBill, CategoryTemplate, BudgetConfig, BankAccount } from '../types';
+import { Transaction, FixedBill, CategoryTemplate, BudgetConfig, BankAccount, FamilyMember } from '../types';
+
+export const INITIAL_MEMBERS: FamilyMember[] = [
+  {
+    id: 'member-primary',
+    name: 'Primary (Self)',
+    role: 'Self',
+    color: '#006397',
+    isDefault: true,
+  },
+];
 
 export const INITIAL_CONFIG: BudgetConfig = {
   monthlyTarget: 3000,

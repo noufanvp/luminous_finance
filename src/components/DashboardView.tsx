@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Transaction, CategoryTemplate, BudgetConfig, TabType, BankAccount, FixedBill } from '../types';
+import { Transaction, CategoryTemplate, BudgetConfig, TabType, BankAccount, FixedBill, FamilyMember } from '../types';
 import { calculateSummary, getCategoryBreakdown, getAccountBalances } from '../utils/finance';
 
 interface DashboardViewProps {
@@ -8,6 +8,9 @@ interface DashboardViewProps {
   config: BudgetConfig;
   accounts?: BankAccount[];
   fixedBills?: FixedBill[];
+  members?: FamilyMember[];
+  activeMemberId?: string;
+  onSelectMember?: (id: string) => void;
   setActiveTab: (tab: TabType) => void;
   currentUser?: { displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
 }
@@ -18,20 +21,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   config,
   accounts = [],
   fixedBills = [],
+  members = [],
+  activeMemberId = 'all',
+  onSelectMember,
   setActiveTab,
   currentUser,
 }) => {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [transactionSearch, setTransactionSearch] = useState<string>('');
 
+  const defaultMember = members.find((m) => m.isDefault) || members[0];
+  const activeMember = members.find((m) => m.id === activeMemberId);
+
+  // Filter transactions by active member if a specific member is selected
+  const activeTransactions = activeMemberId !== 'all'
+    ? transactions.filter((t) => (t.memberId ? t.memberId === activeMemberId : (defaultMember ? defaultMember.id === activeMemberId : true)))
+    : transactions;
+
+  // Filter accounts by active member if a specific member is selected
+  const activeAccounts = activeMemberId !== 'all'
+    ? accounts.filter((a) => (a.memberId ? a.memberId === activeMemberId : (defaultMember ? defaultMember.id === activeMemberId : true)))
+    : accounts;
+
   // 1. Calculate Summary Metrics
   const summary = calculateSummary(
-    transactions,
+    activeTransactions,
     config.monthlyTarget,
     config.paydayAnchorDay
   );
 
-  const breakdown = getCategoryBreakdown(transactions, categories);
+  const breakdown = getCategoryBreakdown(activeTransactions, categories);
 
   // Other vs Allocated breakdown calculation
   const otherStats = breakdown.find((b) => b.isSystemOther || b.category.toLowerCase() === 'other');
@@ -48,18 +67,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const sym = config.currencySymbol || '$';
 
   // Account Balances Metrics (Dynamic real-time balance incorporating income, expenses, and transfers)
-  const accountBalancesList = getAccountBalances(accounts, transactions);
+  const accountBalancesList = getAccountBalances(activeAccounts, activeTransactions);
   const accountBalancesMap: Record<string, number> = {};
   accountBalancesList.forEach((ab) => {
     accountBalancesMap[ab.id] = ab.currentBalance;
   });
 
-  const liquidAccounts = accounts.filter((a) => !a.excludeFromTotal && a.type !== 'credit');
-  const creditAccounts = accounts.filter((a) => !a.excludeFromTotal && a.type === 'credit');
+  const liquidAccounts = activeAccounts.filter((a) => !a.excludeFromTotal && a.type !== 'credit');
+  const creditAccounts = activeAccounts.filter((a) => !a.excludeFromTotal && a.type === 'credit');
 
   const totalLiquidCash = liquidAccounts.reduce((sum, a) => sum + (accountBalancesMap[a.id] ?? a.balance), 0);
   const totalCreditDebt = creditAccounts.reduce((sum, a) => sum + Math.abs(accountBalancesMap[a.id] ?? a.balance), 0);
-  const totalNetWorth = accounts.length > 0
+  const totalNetWorth = activeAccounts.length > 0
     ? totalLiquidCash - totalCreditDebt
     : (summary.totalIncome - summary.totalExpenses);
 
@@ -95,7 +114,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const netRolloverTotal = breakdown.reduce((acc, item) => acc + (item.rolloverEnabled ? item.rolledOverAmount : 0), 0);
 
   // Recent Transactions (sorted by date descending)
-  const recentTransactions = [...transactions]
+  const recentTransactions = [...activeTransactions]
     .filter((t) => {
       const matchCat = selectedCategoryFilter === 'all' || t.category.toLowerCase() === selectedCategoryFilter.toLowerCase();
       const matchSearch = !transactionSearch || t.title.toLowerCase().includes(transactionSearch.toLowerCase()) || t.category.toLowerCase().includes(transactionSearch.toLowerCase());
@@ -120,6 +139,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 flex flex-col gap-5 sm:gap-6">
+      {/* Active Member Scoped Banner */}
+      {activeMemberId !== 'all' && activeMember && (
+        <div className="bg-gradient-to-r from-[#00476e] to-[#006397] rounded-2xl p-4 text-white shadow-md flex items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-2xl text-white font-extrabold text-base flex items-center justify-center shadow-xs shrink-0 border-2 border-white/40"
+              style={{ backgroundColor: activeMember.color || '#006397' }}
+            >
+              {activeMember.name.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-sm sm:text-base leading-tight">
+                  {activeMember.name}'s Financial View
+                </h3>
+                <span className="text-[10px] bg-white/20 font-bold px-2 py-0.5 rounded-full">
+                  {activeMember.role || 'Member'}
+                </span>
+              </div>
+              <p className="text-xs text-[#92ccff] mt-0.5">
+                Filtered to {activeMember.name}'s transactions under this shared account
+              </p>
+            </div>
+          </div>
+
+          {onSelectMember && (
+            <button
+              onClick={() => onSelectMember('all')}
+              className="px-3.5 py-1.5 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-bold transition-all shrink-0 border border-white/20 active:scale-95 cursor-pointer shadow-2xs"
+            >
+              Switch to All Family
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ==================== TOP KEY METRICS CARDS GRID ==================== */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Metric 1: Total Net Worth / Balance */}
@@ -550,11 +605,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             </div>
 
-            {accounts.length === 0 ? (
+            {activeAccounts.length === 0 ? (
               <p className="text-xs text-[#74777d] italic py-2">No bank accounts linked yet.</p>
             ) : (
               <div className="flex flex-col gap-2.5">
-                {accounts.map((acc) => {
+                {activeAccounts.map((acc) => {
                   const currentBal = accountBalancesMap[acc.id] ?? acc.balance;
                   const isCredit = acc.type === 'credit';
                   return (
@@ -659,7 +714,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           </span>
                         </div>
                         <div className="min-w-0">
-                          <h4 className="text-xs font-bold text-[#041627] truncate">{tx.title}</h4>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <h4 className="text-xs font-bold text-[#041627] truncate">{tx.title}</h4>
+                            {tx.memberId && (
+                              <span
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-white text-[#475569] border border-[#d2e4fb]/80 shrink-0"
+                              >
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full"
+                                  style={{
+                                    backgroundColor:
+                                      members.find((m) => m.id === tx.memberId)?.color || '#006397',
+                                  }}
+                                />
+                                <span>{members.find((m) => m.id === tx.memberId)?.name || 'Member'}</span>
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-[#44474c] font-medium block truncate">
                             {tx.category} • {tx.date}
                           </span>

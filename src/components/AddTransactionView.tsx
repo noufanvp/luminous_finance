@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Transaction, CategoryTemplate, TransactionType, TabType, BudgetConfig, BankAccount } from '../types';
+import { Transaction, CategoryTemplate, TransactionType, TabType, BudgetConfig, BankAccount, FamilyMember } from '../types';
 import { INITIAL_TRANSACTIONS } from '../data/initialData';
 import { getCategoryBreakdown, getRollingDailyCategoryPacing, normalizeTransactionDate, getIsoDateString } from '../utils/finance';
 import { AddCategoryModal } from './AddCategoryModal';
@@ -11,6 +11,9 @@ interface AddTransactionViewProps {
   categories: CategoryTemplate[];
   transactions?: Transaction[];
   accounts?: BankAccount[];
+  members?: FamilyMember[];
+  activeMemberId?: string;
+  onSelectMember?: (id: string) => void;
   onAddTransaction: (tx: Omit<Transaction, 'id'>) => void;
   onUpdateTransaction?: (id: string, updatedFields: Partial<Transaction>) => void;
   editingTransaction?: Transaction | null;
@@ -27,6 +30,9 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
   categories,
   transactions,
   accounts = [],
+  members = [],
+  activeMemberId = 'all',
+  onSelectMember,
   onAddTransaction,
   onUpdateTransaction,
   editingTransaction,
@@ -70,6 +76,9 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     editingTransaction?.person || editingTransaction?.payee || editingTransaction?.tag || ''
   );
   const [showPersonSuggestions, setShowPersonSuggestions] = useState(false);
+  const [excludeFromBudget, setExcludeFromBudget] = useState<boolean>(
+    editingTransaction?.excludeFromBudget || false
+  );
 
   // Extract previous unique memo and title entries for auto-suggestions (most recent first)
   const previousMemos = useMemo(() => {
@@ -433,6 +442,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     setTxDate(getIsoDateString());
     setTxType('expense');
     setSelectedCategory(categories.length > 0 ? categories[0].name : 'Groceries');
+    setExcludeFromBudget(false);
   };
 
   const handleKeyPress = (key: string) => {
@@ -513,7 +523,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayExpr, memo, person, selectedCategory, txType, txDate, selectedAccountId, selectedToAccountId]);
+  }, [displayExpr, memo, person, selectedCategory, txType, txDate, selectedAccountId, selectedToAccountId, excludeFromBudget]);
 
   const handleSave = () => {
     const finalAmount = calculatedValue > 0 ? calculatedValue : parseFloat(displayExpr) || 0;
@@ -523,6 +533,12 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     const personText = person.trim();
 
     const finalDate = normalizeTransactionDate(txDate);
+
+    const targetMemberId =
+      editingTransaction?.memberId ||
+      (activeMemberId && activeMemberId !== 'all'
+        ? activeMemberId
+        : (members.find((m) => m.isDefault)?.id || members[0]?.id || undefined));
 
     if (isEditMode && editingTransaction && onUpdateTransaction) {
       onUpdateTransaction(editingTransaction.id, {
@@ -538,7 +554,9 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         accountId: selectedAccountId || undefined,
         toAccountId: txType === 'transfer' ? selectedToAccountId : undefined,
         isTransfer: txType === 'transfer',
+        excludeFromBudget: txType === 'expense' && excludeFromBudget ? true : undefined,
         rawExpression: displayExpr.trim() !== `${finalAmount}` ? displayExpr : undefined,
+        memberId: targetMemberId,
       });
       if (onClearEditingTransaction) {
         onClearEditingTransaction();
@@ -557,8 +575,10 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         accountId: selectedAccountId || undefined,
         toAccountId: txType === 'transfer' ? selectedToAccountId : undefined,
         isTransfer: txType === 'transfer',
+        excludeFromBudget: txType === 'expense' && excludeFromBudget ? true : undefined,
         rawExpression: displayExpr.trim() !== `${finalAmount}` ? displayExpr : undefined,
         isAutoParsed: true,
+        memberId: targetMemberId,
       });
     }
 
@@ -568,6 +588,58 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
       setActiveTab('ledger');
     }, 600);
   };
+
+  // If in All Family mode and not editing an existing transaction, prompt to pick personal profile
+  if (activeMemberId === 'all' && !editingTransaction && members.length > 0) {
+    return (
+      <div className="w-full max-w-md mx-auto p-5 sm:p-6 my-auto flex flex-col items-center justify-center text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#006397]/15 to-[#0284c7]/15 text-[#006397] flex items-center justify-center mb-4 shadow-xs ring-1 ring-[#006397]/20">
+          <span className="material-symbols-outlined text-3xl">account_circle</span>
+        </div>
+        <h2 className="text-xl font-extrabold text-[#041627] mb-1">Select Personal Account</h2>
+        <p className="text-xs text-[#44474c] mb-6 max-w-xs leading-relaxed">
+          Transactions are logged directly under each person's separate account. Choose whose account to log this transaction in:
+        </p>
+
+        <div className="w-full flex flex-col gap-2.5">
+          {members.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => onSelectMember && onSelectMember(m.id)}
+              className="w-full p-4 rounded-2xl bg-white border border-[#e1e3e4] hover:border-[#006397] hover:shadow-md transition-all flex items-center justify-between group cursor-pointer active:scale-98 text-left shadow-2xs"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl text-white font-extrabold flex items-center justify-center shadow-xs text-base shrink-0"
+                  style={{ backgroundColor: m.color || '#006397' }}
+                >
+                  {m.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-[#041627] group-hover:text-[#006397] transition-colors">
+                    {m.name}
+                  </h4>
+                  <p className="text-[11px] text-[#74777d]">{m.role || 'Member'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 text-xs font-bold text-[#006397]">
+                <span>Log Here</span>
+                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setActiveTab('ledger')}
+          className="mt-6 text-xs text-[#74777d] hover:text-[#041627] font-semibold py-1 px-3 rounded-lg transition-colors cursor-pointer"
+        >
+          Cancel & Return to Ledger
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col justify-between p-3 sm:p-4 gap-[clamp(6px,1.2vh,14px)] min-h-[460px] max-h-[calc(100dvh-170px)] md:max-h-[calc(100vh-120px)] overflow-y-auto no-scrollbar">
@@ -860,7 +932,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                 <span className="text-[11px] font-bold text-[#44474c] uppercase tracking-wider">
                   Category: <span className="text-[#006397] font-extrabold capitalize">{selectedCategory}</span>
                 </span>
-                {(() => {
+                {txType === 'expense' && (() => {
                   const selAvail = categoryAvailableMap.get(selectedCategory.toLowerCase());
                   if (!selAvail) return null;
                   return (
@@ -914,17 +986,19 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                       {cat.icon || 'shopping_basket'}
                     </span>
                     <span>{cat.name}</span>
-                    <span
-                      className={`text-[10px] font-mono px-1 rounded-md ${
-                        isSelected
-                          ? 'bg-white/20 text-white font-extrabold'
-                          : availVal >= 0
-                          ? 'text-[#00a656] bg-[#00a656]/10 font-bold'
-                          : 'text-[#ba1a1a] bg-[#ba1a1a]/10 font-bold'
-                      }`}
-                    >
-                      {availVal >= 0 ? `+${sym}${availVal.toFixed(0)}` : `-${sym}${Math.abs(availVal).toFixed(0)}`}
-                    </span>
+                    {txType === 'expense' && (
+                      <span
+                        className={`text-[10px] font-mono px-1 rounded-md ${
+                          isSelected
+                            ? 'bg-white/20 text-white font-extrabold'
+                            : availVal >= 0
+                            ? 'text-[#00a656] bg-[#00a656]/10 font-bold'
+                            : 'text-[#ba1a1a] bg-[#ba1a1a]/10 font-bold'
+                        }`}
+                      >
+                        {availVal >= 0 ? `+${sym}${availVal.toFixed(0)}` : `-${sym}${Math.abs(availVal).toFixed(0)}`}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1062,6 +1136,40 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
             </div>
           )}
         </div>
+
+        {/* Exclude from Budget Toggle Row (Only applicable for Expenses) */}
+        {txType === 'expense' && (
+          <div className="pt-2 border-t border-[#f0f1f2] flex items-center justify-between text-xs">
+            <div className="flex flex-col">
+              <span className={`font-bold leading-tight ${excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
+                Exclude from Budget
+              </span>
+              <span className="text-[10px] text-[#74777d]">
+                {excludeFromBudget
+                  ? 'Ignored in category budget limits & daily pacing'
+                  : 'Counts toward monthly target & category limits'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setExcludeFromBudget((prev) => !prev)}
+              className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
+              }`}
+              role="switch"
+              aria-checked={excludeFromBudget}
+              title={excludeFromBudget ? 'Excluded from budget. Click to include.' : 'Click to exclude from budget.'}
+            >
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                  excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Keypad Grid & Save Button */}
@@ -1365,7 +1473,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                         <span className="font-bold text-xs text-[#191c1d] block truncate">
                           {cat.name}
                         </span>
-                        {availInfo && (
+                        {txType === 'expense' && availInfo && (
                           <span className={`text-[10px] font-bold font-mono block ${
                             availInfo.available >= 0 ? 'text-[#00a656]' : 'text-[#ba1a1a]'
                           }`}>
@@ -1373,7 +1481,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                             {availInfo.available >= 0 ? `+${sym}${availInfo.available.toFixed(2)}` : `-${sym}${Math.abs(availInfo.available).toFixed(2)}`}
                           </span>
                         )}
-                        {isSelected && !availInfo && (
+                        {isSelected && (txType !== 'expense' || !availInfo) && (
                           <span className="text-[10px] font-extrabold text-[#006397] block">
                             Selected
                           </span>

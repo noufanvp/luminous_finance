@@ -1,5 +1,14 @@
 export type TransactionType = 'expense' | 'income' | 'transfer';
 
+export interface FamilyMember {
+  id: string;
+  name: string;
+  role?: string; // 'Self' | 'Spouse' | 'Child' | 'Parent' | 'Partner' | 'Sibling' | 'Other'
+  avatar?: string;
+  color?: string;
+  isDefault?: boolean;
+}
+
 export interface BankAccount {
   id: string;
   name: string;
@@ -11,6 +20,7 @@ export interface BankAccount {
   institution?: string;
   isDefault?: boolean;
   excludeFromTotal?: boolean;
+  memberId?: string; // ID of the family member who owns this account ('all' or undefined for joint/shared)
 }
 
 export interface Transaction {
@@ -29,6 +39,8 @@ export interface Transaction {
   accountId?: string;      // ID of associated bank account (source or target)
   toAccountId?: string;    // Destination bank account ID for transfers
   isTransfer?: boolean;    // Indicates internal money transfer between accounts
+  excludeFromBudget?: boolean; // When true, excludes from budget allocation and pacing calculations
+  memberId?: string;       // ID of family member associated with this transaction
 }
 
 export interface FixedBill {

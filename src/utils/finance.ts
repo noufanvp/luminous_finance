@@ -6,11 +6,11 @@ export function calculateSummary(
   paydayAnchorDay: number
 ) {
   const totalExpenses = transactions
-    .filter((t) => t.type === 'expense' && !t.isTransfer)
+    .filter((t) => t.type === 'expense' && !t.isTransfer && !t.excludeFromBudget)
     .reduce((sum, t) => sum + t.amount, 0);
 
   const totalIncome = transactions
-    .filter((t) => t.type === 'income' && !t.isTransfer)
+    .filter((t) => t.type === 'income' && !t.isTransfer && !t.excludeFromBudget)
     .reduce((sum, t) => sum + t.amount, 0);
 
   const remaining = Math.max(0, monthlyTarget - totalExpenses);
@@ -61,7 +61,7 @@ export function getCategoryBreakdown(
   transactions: Transaction[],
   categories: CategoryTemplate[]
 ): CategoryBreakdown[] {
-  const expenses = transactions.filter((t) => t.type === 'expense' && !t.isTransfer);
+  const expenses = transactions.filter((t) => t.type === 'expense' && !t.isTransfer && !t.excludeFromBudget);
   const totalSpent = expenses.reduce((sum, t) => sum + t.amount, 0);
 
   // Find or default 'Other' category template
@@ -409,7 +409,7 @@ export function getRollingDailyCategoryPacing(
 
   const cycleExpensesLogged = transactions
     .filter((t) => {
-      if (t.type !== 'expense') return false;
+      if (t.type !== 'expense' || t.isTransfer || t.excludeFromBudget) return false;
       const tCat = (t.category || '').trim().toLowerCase();
       if (tCat !== categoryName.trim().toLowerCase()) return false;
       const tDate = parseTransactionDate(t.date).getTime();

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BankAccount, Transaction, BudgetConfig } from '../types';
+import { BankAccount, Transaction, BudgetConfig, FamilyMember } from '../types';
 import { getAccountBalances, normalizeTransactionDate } from '../utils/finance';
 import { TransferMoneyModal } from './TransferMoneyModal';
 
@@ -7,6 +7,8 @@ interface AccountsViewProps {
   accounts: BankAccount[];
   transactions: Transaction[];
   config: BudgetConfig;
+  members?: FamilyMember[];
+  activeMemberId?: string;
   onAddAccount: (acc: Omit<BankAccount, 'id'>) => void;
   onUpdateAccount: (id: string, updated: Partial<BankAccount>) => void;
   onDeleteAccount: (id: string) => void;
@@ -40,6 +42,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   accounts,
   transactions,
   config,
+  members = [],
+  activeMemberId = 'all',
   onAddAccount,
   onUpdateAccount,
   onDeleteAccount,
@@ -47,7 +51,24 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   setActiveTab,
 }) => {
   const sym = config.currencySymbol || '$';
-  const accountBalancesList = getAccountBalances(accounts, transactions);
+  const isAllFamily = activeMemberId === 'all';
+  const defaultMember = members.find((m) => m.isDefault) || members[0];
+
+  const displayedAccounts = isAllFamily
+    ? accounts
+    : accounts.filter((a) => {
+        if (a.memberId) return a.memberId === activeMemberId;
+        return defaultMember ? defaultMember.id === activeMemberId : true;
+      });
+
+  const displayedTransactions = isAllFamily
+    ? transactions
+    : transactions.filter((t) => {
+        if (t.memberId) return t.memberId === activeMemberId;
+        return defaultMember ? defaultMember.id === activeMemberId : true;
+      });
+
+  const accountBalancesList = getAccountBalances(displayedAccounts, displayedTransactions);
   const balances: Record<string, number> = {};
   accountBalancesList.forEach((ab) => {
     balances[ab.id] = ab.currentBalance;
@@ -120,6 +141,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         color: formColor,
         icon: formIcon,
         excludeFromTotal: formExcludeFromTotal,
+        memberId: editingAccount.memberId,
       });
     } else {
       onAddAccount({
@@ -131,6 +153,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         color: formColor,
         icon: formIcon,
         excludeFromTotal: formExcludeFromTotal,
+        memberId: activeMemberId && activeMemberId !== 'all' ? activeMemberId : undefined,
       });
     }
 
@@ -174,19 +197,19 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   };
 
   // Total Liquid Assets (Assets minus credit debts, excluding opted-out accounts)
-  const totalAssets = accounts
+  const totalAssets = displayedAccounts
     .filter((a) => a.type !== 'credit' && !a.excludeFromTotal)
     .reduce((sum, a) => sum + (balances[a.id] ?? a.balance), 0);
 
-  const totalCreditDebt = accounts
+  const totalCreditDebt = displayedAccounts
     .filter((a) => a.type === 'credit' && !a.excludeFromTotal)
     .reduce((sum, a) => sum + Math.abs(balances[a.id] ?? a.balance), 0);
 
   const netLiquidity = totalAssets - totalCreditDebt;
-  const excludedAccountsCount = accounts.filter((a) => a.excludeFromTotal).length;
+  const excludedAccountsCount = displayedAccounts.filter((a) => a.excludeFromTotal).length;
 
   // Filter transfers
-  const transferTxs = transactions.filter((t) => t.type === 'transfer' || t.isTransfer);
+  const transferTxs = displayedTransactions.filter((t) => t.type === 'transfer' || t.isTransfer);
 
   return (
     <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
@@ -196,7 +219,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           <div className="min-w-0 overflow-hidden">
             <div className="flex flex-wrap items-center gap-2 text-[#92ccff] text-xs font-bold uppercase tracking-wider mb-1">
               <span className="material-symbols-outlined text-[18px]">account_balance</span>
-              <span>Net Bank Holdings & Liquidity</span>
+              <span>{isAllFamily ? 'All Family Bank Holdings (Combined)' : 'Net Bank Holdings & Liquidity'}</span>
               {excludedAccountsCount > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-[#ba1a1a]/30 text-[#ffb4ab] border border-[#ffb4ab]/30 text-[10px] font-bold normal-case tracking-normal flex items-center gap-1">
                   <span className="material-symbols-outlined text-[12px]">visibility_off</span>
@@ -214,20 +237,29 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
-            <button
-              onClick={() => handleOpenTransferModal()}
-              className="px-4 py-2.5 rounded-2xl bg-[#00a656] hover:bg-[#008243] text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 active:scale-95"
-            >
-              <span className="material-symbols-outlined text-[18px]">sync_alt</span>
-              <span>Transfer Funds</span>
-            </button>
-            <button
-              onClick={handleOpenAddModal}
-              className="px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm border border-white/20 transition-all flex items-center gap-2 active:scale-95 backdrop-blur-md"
-            >
-              <span className="material-symbols-outlined text-[18px]">add</span>
-              <span>Add Account</span>
-            </button>
+            {isAllFamily ? (
+              <div className="px-4 py-2.5 rounded-2xl bg-white/10 text-white/90 text-xs font-bold border border-white/15 flex items-center gap-2 backdrop-blur-md">
+                <span className="material-symbols-outlined text-[18px] text-[#92ccff]">diversity_3</span>
+                <span>Combined View (View Only)</span>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleOpenTransferModal()}
+                  className="px-4 py-2.5 rounded-2xl bg-[#00a656] hover:bg-[#008243] text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">sync_alt</span>
+                  <span>Transfer Funds</span>
+                </button>
+                <button
+                  onClick={handleOpenAddModal}
+                  className="px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm border border-white/20 transition-all flex items-center gap-2 active:scale-95 backdrop-blur-md cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">add</span>
+                  <span>Add Account</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -240,13 +272,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-extrabold text-[#041627] flex items-center gap-2">
             <span className="material-symbols-outlined text-[#006397]">credit_card</span>
-            <span>Your Bank Accounts ({accounts.length})</span>
+            <span>Bank Accounts ({displayedAccounts.length})</span>
           </h3>
           <span className="text-xs text-[#74777d]">Balances update automatically with income, expenses & transfers</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {accounts.map((acc) => {
+          {displayedAccounts.map((acc) => {
             const currentBal = balances[acc.id] ?? acc.balance;
             const isCredit = acc.type === 'credit';
             const isExcluded = acc.excludeFromTotal;
@@ -287,11 +319,26 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-col items-end gap-1">
                       {/* Account Type Badge */}
                       <span className="text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-md bg-[#f0f4f8] text-[#006397]">
                         {acc.type}
                       </span>
+                      {/* Family Member Owner Badge */}
+                      {members.length > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 bg-[#f8fafc] text-[#475569] border border-[#e2e8f0]">
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{
+                              backgroundColor:
+                                members.find((m) => m.id === acc.memberId)?.color || '#64748b',
+                            }}
+                          />
+                          <span>
+                            {members.find((m) => m.id === acc.memberId)?.name || 'Joint / All'}
+                          </span>
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -318,51 +365,53 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </div>
 
                 {/* Card Action Buttons */}
-                <div className="mt-4 pt-3 border-t border-[#f0f4f8] flex items-center justify-between gap-2 text-xs">
-                  <button
-                    onClick={() => handleOpenTransferModal(acc.id)}
-                    className="flex-1 py-1.5 rounded-xl bg-[#f0f4f8] hover:bg-[#006397] hover:text-white font-bold text-[#006397] transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">sync_alt</span>
-                    <span>Transfer</span>
-                  </button>
-
-                  <button
-                    onClick={() => onUpdateAccount(acc.id, { excludeFromTotal: !acc.excludeFromTotal })}
-                    className={`p-1.5 rounded-xl transition-colors ${
-                      isExcluded
-                        ? 'bg-[#ba1a1a]/10 text-[#ba1a1a] hover:bg-[#ba1a1a]/20'
-                        : 'text-[#74777d] hover:text-[#006397] hover:bg-[#f0f4f8]'
-                    }`}
-                    title={isExcluded ? 'Include in total available balance' : 'Exclude from total available balance'}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      {isExcluded ? 'visibility_off' : 'visibility'}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => handleOpenEditModal(acc)}
-                    className="p-1.5 rounded-xl text-[#74777d] hover:text-[#006397] hover:bg-[#f0f4f8] transition-colors"
-                    title="Edit Account"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">edit</span>
-                  </button>
-
-                  {accounts.length > 1 && (
+                {!isAllFamily && (
+                  <div className="mt-4 pt-3 border-t border-[#f0f4f8] flex items-center justify-between gap-2 text-xs">
                     <button
-                      onClick={() => {
-                        if (confirm(`Are you sure you want to delete "${acc.name}"?`)) {
-                          onDeleteAccount(acc.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-xl text-[#74777d] hover:text-[#ba1a1a] hover:bg-[#ffb4ab]/20 transition-colors"
-                      title="Delete Account"
+                      onClick={() => handleOpenTransferModal(acc.id)}
+                      className="flex-1 py-1.5 rounded-xl bg-[#f0f4f8] hover:bg-[#006397] hover:text-white font-bold text-[#006397] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <span className="material-symbols-outlined text-[18px]">delete</span>
+                      <span className="material-symbols-outlined text-[16px]">sync_alt</span>
+                      <span>Transfer</span>
                     </button>
-                  )}
-                </div>
+
+                    <button
+                      onClick={() => onUpdateAccount(acc.id, { excludeFromTotal: !acc.excludeFromTotal })}
+                      className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                        isExcluded
+                          ? 'bg-[#ba1a1a]/10 text-[#ba1a1a] hover:bg-[#ba1a1a]/20'
+                          : 'text-[#74777d] hover:text-[#006397] hover:bg-[#f0f4f8]'
+                      }`}
+                      title={isExcluded ? 'Include in total available balance' : 'Exclude from total available balance'}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        {isExcluded ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenEditModal(acc)}
+                      className="p-1.5 rounded-xl text-[#74777d] hover:text-[#006397] hover:bg-[#f0f4f8] transition-colors cursor-pointer"
+                      title="Edit Account"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">edit</span>
+                    </button>
+
+                    {displayedAccounts.length > 1 && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete "${acc.name}"?`)) {
+                            onDeleteAccount(acc.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-xl text-[#74777d] hover:text-[#ba1a1a] hover:bg-[#ffb4ab]/20 transition-colors cursor-pointer"
+                        title="Delete Account"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">delete</span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

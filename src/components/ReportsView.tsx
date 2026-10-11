@@ -18,13 +18,15 @@ import {
   ReferenceLine,
   ComposedChart,
 } from 'recharts';
-import { Transaction, CategoryTemplate, BankAccount, BudgetConfig } from '../types';
+import { Transaction, CategoryTemplate, BankAccount, BudgetConfig, FamilyMember } from '../types';
 
 interface ReportsViewProps {
   transactions: Transaction[];
   categories: CategoryTemplate[];
   accounts: BankAccount[];
   config: BudgetConfig;
+  members?: FamilyMember[];
+  activeMemberId?: string;
 }
 
 type TimePeriod = 'this_month' | 'last_month' | 'last_3_months' | 'year_to_date' | 'all' | 'custom';
@@ -49,6 +51,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   categories,
   accounts,
   config,
+  members = [],
+  activeMemberId = 'all',
 }) => {
   const [period, setPeriod] = useState<TimePeriod>('this_month');
   const [customStartDate, setCustomStartDate] = useState<string>('');
@@ -57,7 +61,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   
   // Tab and Sub-Chart view controls
-  const [activeChartTab, setActiveChartTab] = useState<'cashflow' | 'categories' | 'daily' | 'accounts'>('cashflow');
+  const [activeChartTab, setActiveChartTab] = useState<'cashflow' | 'categories' | 'daily' | 'accounts' | 'members'>('cashflow');
   const [cashflowChartType, setCashflowChartType] = useState<'bar' | 'area' | 'line'>('bar');
   const [cashflowMetric, setCashflowMetric] = useState<'all' | 'income' | 'expense' | 'net'>('all');
   const [categoryChartType, setCategoryChartType] = useState<'donut' | 'bar'>('donut');
@@ -71,18 +75,28 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   const currencySymbol = config.currencySymbol || '$';
 
+  const defaultMember = useMemo(() => members.find((m) => m.isDefault) || members[0], [members]);
+
+  const scopedAccounts = useMemo(() => {
+    if (activeMemberId === 'all') return accounts;
+    return accounts.filter((a) => {
+      if (a.memberId) return a.memberId === activeMemberId;
+      return defaultMember ? defaultMember.id === activeMemberId : true;
+    });
+  }, [accounts, activeMemberId, defaultMember]);
+
   // Account Labels and Filter Active
   const activeAccountLabel = useMemo(() => {
     if (selectedAccountId === 'all') return 'All Accounts';
     if (selectedAccountId === 'all_included') return 'All Accounts (Excl. Excluded)';
-    const acc = accounts.find((a) => a.id === selectedAccountId);
+    const acc = scopedAccounts.find((a) => a.id === selectedAccountId);
     return acc ? acc.name : 'Account';
-  }, [accounts, selectedAccountId]);
+  }, [scopedAccounts, selectedAccountId]);
 
   const activeAccount = useMemo(() => {
     if (selectedAccountId === 'all' || selectedAccountId === 'all_included') return null;
-    return accounts.find((a) => a.id === selectedAccountId) || null;
-  }, [accounts, selectedAccountId]);
+    return scopedAccounts.find((a) => a.id === selectedAccountId) || null;
+  }, [scopedAccounts, selectedAccountId]);
 
   // Map category template properties (color, icon) by name
   const categoryMetaMap = useMemo(() => {
@@ -96,13 +110,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return map;
   }, [categories]);
 
-  // Filter transactions based on period and selected account
+  // Filter transactions based on period, member, and selected account
   const filteredTransactions = useMemo(() => {
     let result = [...transactions];
 
+    // Filter by member if not viewing all family
+    if (activeMemberId !== 'all') {
+      result = result.filter((t) => {
+        if (t.memberId) return t.memberId === activeMemberId;
+        return defaultMember ? defaultMember.id === activeMemberId : true;
+      });
+    }
+
     // Filter by account
     if (selectedAccountId === 'all_included') {
-      const excludedAccountIds = new Set(accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+      const excludedAccountIds = new Set(scopedAccounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
       result = result.filter(
         (t) => !excludedAccountIds.has(t.accountId) && (!t.toAccountId || !excludedAccountIds.has(t.toAccountId))
       );
@@ -415,6 +437,60 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     );
   };
 
+  // Family Members spending breakdown
+  const memberBreakdown = useMemo(() => {
+    if (members.length === 0) return [];
+    const memberMap = new Map<string, { member: FamilyMember; expense: number; income: number; txCount: number }>();
+    members.forEach((m) => {
+      memberMap.set(m.id, { member: m, expense: 0, income: 0, txCount: 0 });
+    });
+
+    let untaggedExpense = 0;
+    let untaggedIncome = 0;
+    let untaggedCount = 0;
+
+    filteredTransactions.forEach((tx) => {
+      if (tx.memberId && memberMap.has(tx.memberId)) {
+        const entry = memberMap.get(tx.memberId)!;
+        if (tx.type === 'expense') entry.expense += tx.amount;
+        if (tx.type === 'income') entry.income += tx.amount;
+        entry.txCount += 1;
+      } else {
+        if (tx.type === 'expense') untaggedExpense += tx.amount;
+        if (tx.type === 'income') untaggedIncome += tx.amount;
+        untaggedCount += 1;
+      }
+    });
+
+    const list = Array.from(memberMap.values());
+    if (untaggedCount > 0 && members.length > 1) {
+      list.push({
+        member: { id: 'untagged', name: 'Shared / Untagged', role: 'Shared', color: '#64748b' },
+        expense: untaggedExpense,
+        income: untaggedIncome,
+        txCount: untaggedCount,
+      });
+    }
+
+    const totalExp = list.reduce((sum, item) => sum + item.expense, 0);
+
+    return list.map((item) => ({
+      ...item,
+      percentage: totalExp > 0 ? Math.round((item.expense / totalExp) * 100) : 0,
+    })).sort((a, b) => b.expense - a.expense);
+  }, [members, filteredTransactions]);
+
+  const memberDistributionData = useMemo(() => {
+    return memberBreakdown
+      .filter((m) => m.expense > 0)
+      .map((m) => ({
+        name: m.member.name,
+        value: m.expense,
+        color: m.member.color || '#006397',
+        percentage: m.percentage,
+      }));
+  }, [memberBreakdown]);
+
   return (
     <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 flex flex-col gap-6">
       {/* Top Bar Header & Controls */}
@@ -549,7 +625,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <div className="my-1 border-t border-[#f0f1f2]" />
 
                   {/* Individual accounts list */}
-                  {accounts.map((acc) => {
+                  {scopedAccounts.map((acc) => {
                     const isSelected = selectedAccountId === acc.id;
                     return (
                       <button
@@ -930,6 +1006,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <span className="material-symbols-outlined text-[18px]">account_balance</span>
               <span>By Account</span>
             </button>
+
+            {members.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveChartTab('members')}
+                className={`px-3.5 py-2 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                  activeChartTab === 'members'
+                    ? 'bg-[#006397] text-white shadow-md ring-2 ring-[#006397]/20'
+                    : 'bg-[#f0f4f8] text-[#44474c] hover:bg-[#e1e3e4]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[18px]">diversity_3</span>
+                <span>Family Spending</span>
+              </button>
+            )}
           </div>
 
           {/* Sub-controls based on active chart tab */}
@@ -1517,6 +1608,107 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 5: Family Members Spending Breakdown */}
+        {activeChartTab === 'members' && (
+          <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#f0f2f5]">
+              <div>
+                <h3 className="text-base font-extrabold text-[#041627] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#006397]">diversity_3</span>
+                  <span>Household & Member Spending Breakdown</span>
+                </h3>
+                <p className="text-xs text-[#74777d]">
+                  Compare spending and income across all family profiles under this shared account
+                </p>
+              </div>
+            </div>
+
+            {memberBreakdown.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                {/* Donut Chart */}
+                <div className="lg:col-span-6 h-[260px] sm:h-[300px] flex items-center justify-center relative">
+                  {memberDistributionData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={memberDistributionData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={65}
+                          outerRadius={105}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {memberDistributionData.map((entry, index) => (
+                            <Cell key={`cell-member-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="text-center text-[#74777d] text-xs font-semibold py-12">
+                      No expense data logged for family members in this period
+                    </div>
+                  )}
+                </div>
+
+                {/* Member Breakdown List */}
+                <div className="lg:col-span-6 flex flex-col gap-2.5">
+                  {memberBreakdown.map((item) => (
+                    <div
+                      key={item.member.id}
+                      className="p-3.5 rounded-2xl bg-[#f8fafc] border border-[#e2e8f0] flex items-center justify-between text-xs transition-all hover:bg-white hover:shadow-xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 font-extrabold text-xs shadow-2xs"
+                          style={{ backgroundColor: item.member.color || '#006397' }}
+                        >
+                          {item.member.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-extrabold text-[#191c1d] truncate">{item.member.name}</span>
+                            {item.member.isDefault && (
+                              <span className="text-[9px] bg-[#f0f4f8] text-[#006397] px-1.5 py-0.2 rounded font-bold border border-[#d2e4fb]">
+                                Primary
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-[#74777d]">
+                            {item.member.role || 'Member'} • {item.txCount} transactions
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 font-mono shrink-0">
+                        <div className="text-right">
+                          <span className="font-black text-[#191c1d] block">
+                            {currencySymbol}{item.expense.toFixed(2)}
+                          </span>
+                          {item.income > 0 && (
+                            <span className="text-[10px] font-bold text-[#00a656] block">
+                              +{currencySymbol}{item.income.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-bold text-[#006397] bg-[#006397]/10 px-2 py-0.5 rounded-md min-w-[42px] text-center">
+                          {item.percentage}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-[#74777d] text-xs font-semibold py-12">
+                No member data available. Add family members in the Profile tab to view multi-person analytics.
               </div>
             )}
           </div>

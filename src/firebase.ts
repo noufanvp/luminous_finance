@@ -20,7 +20,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import firebaseConfigJson from '../firebase-applet-config.json';
-import { BudgetConfig, BankAccount, Transaction, FixedBill, CategoryTemplate } from './types';
+import { BudgetConfig, BankAccount, Transaction, FixedBill, CategoryTemplate, FamilyMember } from './types';
 
 // Initialize Firebase App
 const app = initializeApp({
@@ -36,8 +36,8 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
 // Database instance (using custom firestoreDatabaseId if provided)
-export const db = firebaseConfigJson.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
+export const db = (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreDatabaseId
+  ? getFirestore(app, (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreDatabaseId)
   : getFirestore(app);
 
 // Auth helper functions with Stay Signed In persistence option
@@ -72,6 +72,7 @@ export interface UserAppData {
   transactions: Transaction[];
   fixedBills: FixedBill[];
   categories: CategoryTemplate[];
+  members?: FamilyMember[];
 }
 
 // Subscribe to real-time updates for a logged-in user
@@ -96,6 +97,7 @@ export const subscribeToUserAppData = (
           transactions: data.transactions,
           fixedBills: data.fixedBills,
           categories: data.categories,
+          members: data.members,
         });
       }
     },

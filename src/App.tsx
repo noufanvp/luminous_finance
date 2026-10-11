@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from 'firebase/auth';
-import { TabType, Transaction, FixedBill, CategoryTemplate, BudgetConfig, BankAccount } from './types';
+import { TabType, Transaction, FixedBill, CategoryTemplate, BudgetConfig, BankAccount, FamilyMember } from './types';
 import {
   INITIAL_CONFIG,
   INITIAL_TRANSACTIONS,
   INITIAL_FIXED_BILLS,
   INITIAL_CATEGORIES,
   INITIAL_ACCOUNTS,
+  INITIAL_MEMBERS,
 } from './data/initialData';
 import { Header } from './components/Header';
 import { BottomNavBar } from './components/BottomNavBar';
@@ -20,6 +21,7 @@ import { ReportsView } from './components/ReportsView';
 import { ProfileView } from './components/ProfileView';
 import { LoginView } from './components/LoginView';
 import { SplashLoader } from './components/SplashLoader';
+import { ManageFamilyModal } from './components/ManageFamilyModal';
 
 import { getCategoryBreakdown, normalizeTransactionDate } from './utils/finance';
 import {
@@ -91,6 +93,23 @@ export default function App() {
     }
   });
 
+  const [members, setMembers] = useState<FamilyMember[]>(() => {
+    const saved = localStorage.getItem('luminous_v2_members');
+    if (!saved) return INITIAL_MEMBERS;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_MEMBERS;
+    } catch {
+      return INITIAL_MEMBERS;
+    }
+  });
+
+  const [activeMemberId, setActiveMemberId] = useState<string>(() => {
+    return localStorage.getItem('luminous_v2_active_member') || 'all';
+  });
+
+  const [showFamilyModal, setShowFamilyModal] = useState(false);
+
   // Listen to Firebase Auth state
   useEffect(() => {
     const unsubscribe = listenToAuth((user) => {
@@ -129,6 +148,7 @@ export default function App() {
         transactions: data.transactions || transactions,
         fixedBills: data.fixedBills || fixedBills,
         categories: data.categories || categories,
+        members: data.members || members,
       };
 
       // Set lastSavedJsonRef to incoming payload to prevent snapshot feedback loops
@@ -159,6 +179,10 @@ export default function App() {
         setCategories(data.categories);
         localStorage.setItem('luminous_v2_cats', JSON.stringify(data.categories));
       }
+      if (data.members) {
+        setMembers(data.members);
+        localStorage.setItem('luminous_v2_members', JSON.stringify(data.members));
+      }
 
       setSyncStatus('synced');
       setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -177,7 +201,7 @@ export default function App() {
 
     if (!currentUser) return;
 
-    const payload = { config, accounts, transactions, fixedBills, categories };
+    const payload = { config, accounts, transactions, fixedBills, categories, members };
     const payloadJson = JSON.stringify(payload);
 
     if (payloadJson === lastSavedJsonRef.current) {
@@ -202,7 +226,7 @@ export default function App() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [config, accounts, transactions, fixedBills, categories, currentUser]);
+  }, [config, accounts, transactions, fixedBills, categories, members, currentUser]);
 
   // Persist state to localStorage
   useEffect(() => {
@@ -225,6 +249,14 @@ export default function App() {
     localStorage.setItem('luminous_v2_cats', JSON.stringify(categories));
   }, [categories]);
 
+  useEffect(() => {
+    localStorage.setItem('luminous_v2_members', JSON.stringify(members));
+  }, [members]);
+
+  useEffect(() => {
+    localStorage.setItem('luminous_v2_active_member', activeMemberId);
+  }, [activeMemberId]);
+
   // Login & Logout handlers with Cloud Merge logic
   const handleLoginWithGoogle = async (rememberMe: boolean = true) => {
     try {
@@ -233,7 +265,7 @@ export default function App() {
       if (user) {
         // Fetch existing remote Firestore data before saving local data
         const remoteData = await getUserAppData(user.uid);
-        if (remoteData && (remoteData.transactions?.length || remoteData.accounts?.length)) {
+        if (remoteData && (remoteData.transactions?.length || remoteData.accounts?.length || remoteData.members?.length)) {
           // Cloud has data! Merge local & cloud transactions by unique ID
           const mergedTransactions = mergeTransactionsById(transactions, remoteData.transactions || []);
           const mergedPayload = {
@@ -242,6 +274,7 @@ export default function App() {
             transactions: mergedTransactions,
             fixedBills: remoteData.fixedBills || fixedBills,
             categories: remoteData.categories || categories,
+            members: remoteData.members || members,
           };
           lastSavedJsonRef.current = JSON.stringify(mergedPayload);
           if (remoteData.config) setConfig(remoteData.config);
@@ -249,11 +282,12 @@ export default function App() {
           setTransactions(mergedTransactions);
           if (remoteData.fixedBills) setFixedBills(remoteData.fixedBills);
           if (remoteData.categories) setCategories(remoteData.categories);
+          if (remoteData.members) setMembers(remoteData.members);
 
           await saveUserAppData(user.uid, mergedPayload);
         } else {
           // New cloud document: seed local data to Firestore
-          const initialPayload = { config, accounts, transactions, fixedBills, categories };
+          const initialPayload = { config, accounts, transactions, fixedBills, categories, members };
           lastSavedJsonRef.current = JSON.stringify(initialPayload);
           await saveUserAppData(user.uid, initialPayload);
         }
@@ -280,6 +314,7 @@ export default function App() {
           transactions: mergedTransactions,
           fixedBills: remoteData.fixedBills || fixedBills,
           categories: remoteData.categories || categories,
+          members: remoteData.members || members,
         };
         lastSavedJsonRef.current = JSON.stringify(payload);
         if (remoteData.config) setConfig(remoteData.config);
@@ -287,13 +322,14 @@ export default function App() {
         setTransactions(mergedTransactions);
         if (remoteData.fixedBills) setFixedBills(remoteData.fixedBills);
         if (remoteData.categories) setCategories(remoteData.categories);
+        if (remoteData.members) setMembers(remoteData.members);
 
         await saveUserAppData(currentUser.uid, payload);
         setSyncStatus('synced');
         setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
         setSyncQuotaNotice(null);
       } else {
-        const payload = { config, accounts, transactions, fixedBills, categories };
+        const payload = { config, accounts, transactions, fixedBills, categories, members };
         lastSavedJsonRef.current = JSON.stringify(payload);
         await saveUserAppData(currentUser.uid, payload);
         setSyncStatus('synced');
@@ -302,6 +338,27 @@ export default function App() {
     } catch (err) {
       console.error('Manual sync failed:', err);
       setSyncStatus('error');
+    }
+  };
+
+  const handleAddMember = (member: Omit<FamilyMember, 'id'>) => {
+    const newMember: FamilyMember = {
+      ...member,
+      id: `member-${Date.now()}`,
+    };
+    setMembers((prev) => [...prev, newMember]);
+  };
+
+  const handleUpdateMember = (id: string, updated: Partial<FamilyMember>) => {
+    setMembers((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...updated } : m))
+    );
+  };
+
+  const handleDeleteMember = (id: string) => {
+    setMembers((prev) => prev.filter((m) => m.id !== id));
+    if (activeMemberId === id) {
+      setActiveMemberId('all');
     }
   };
 
@@ -428,6 +485,8 @@ export default function App() {
     setTransactions(INITIAL_TRANSACTIONS);
     setFixedBills(INITIAL_FIXED_BILLS);
     setCategories(INITIAL_CATEGORIES);
+    setMembers(INITIAL_MEMBERS);
+    setActiveMemberId('all');
     localStorage.clear();
   };
 
@@ -461,6 +520,10 @@ export default function App() {
         syncStatus={syncStatus}
         lastSyncedAt={lastSyncedAt}
         onManualSync={handleManualSync}
+        members={members}
+        activeMemberId={activeMemberId}
+        onSelectMember={setActiveMemberId}
+        onOpenManageModal={() => setShowFamilyModal(true)}
       />
 
       {syncQuotaNotice && (
@@ -498,6 +561,9 @@ export default function App() {
                 fixedBills={fixedBills}
                 setActiveTab={setActiveTab}
                 currentUser={currentUser}
+                members={members}
+                activeMemberId={activeMemberId}
+                onSelectMember={setActiveMemberId}
               />
             )}
 
@@ -515,6 +581,9 @@ export default function App() {
                 }}
                 config={config}
                 onImportTransactions={handleImportTransactions}
+                members={members}
+                activeMemberId={activeMemberId}
+                onSelectMember={setActiveMemberId}
               />
             )}
 
@@ -536,6 +605,9 @@ export default function App() {
                 onUpdateCategory={handleUpdateCategory}
                 onDeleteCategory={handleDeleteCategory}
                 onReorderCategories={handleReorderCategories}
+                members={members}
+                activeMemberId={activeMemberId}
+                onSelectMember={setActiveMemberId}
               />
             )}
 
@@ -551,6 +623,9 @@ export default function App() {
                 onUpdateCategory={handleUpdateCategory}
                 onDeleteCategory={handleDeleteCategory}
                 transactions={transactions}
+                members={members}
+                activeMemberId={activeMemberId}
+                onSelectMember={setActiveMemberId}
               />
             )}
 
@@ -564,6 +639,9 @@ export default function App() {
                 onDeleteAccount={handleDeleteAccount}
                 onAddTransaction={handleAddTransaction}
                 setActiveTab={setActiveTab}
+                members={members}
+                activeMemberId={activeMemberId}
+                onSelectMember={setActiveMemberId}
               />
             )}
 
@@ -573,6 +651,9 @@ export default function App() {
                 categories={categories}
                 accounts={accounts}
                 config={config}
+                members={members}
+                activeMemberId={activeMemberId}
+                onSelectMember={setActiveMemberId}
               />
             )}
 
@@ -590,11 +671,30 @@ export default function App() {
                 syncStatus={syncStatus}
                 lastSyncedAt={lastSyncedAt}
                 onManualSync={handleManualSync}
+                members={members}
+                activeMemberId={activeMemberId}
+                onSelectMember={setActiveMemberId}
+                onAddMember={handleAddMember}
+                onUpdateMember={handleUpdateMember}
+                onDeleteMember={handleDeleteMember}
+                onOpenFamilyModal={() => setShowFamilyModal(true)}
               />
             )}
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* Manage Family Members Modal */}
+      <ManageFamilyModal
+        isOpen={showFamilyModal}
+        onClose={() => setShowFamilyModal(false)}
+        members={members}
+        activeMemberId={activeMemberId}
+        onSelectMember={setActiveMemberId}
+        onAddMember={handleAddMember}
+        onUpdateMember={handleUpdateMember}
+        onDeleteMember={handleDeleteMember}
+      />
 
       {/* Mobile Bottom Navigation */}
       <BottomNavBar activeTab={activeTab} setActiveTab={setActiveTab} />

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BudgetConfig, FixedBill, CategoryTemplate, Transaction } from '../types';
+import { BudgetConfig, FixedBill, CategoryTemplate, Transaction, FamilyMember } from '../types';
 import {
   getCategoryBreakdown,
   getBillingCycleInfo,
@@ -18,6 +18,9 @@ interface BudgetsViewProps {
   onUpdateCategory: (id: string, updated: Partial<CategoryTemplate>) => void;
   onDeleteCategory: (id: string) => void;
   transactions: Transaction[];
+  members?: FamilyMember[];
+  activeMemberId?: string;
+  onSelectMember?: (id: string) => void;
 }
 
 export const BudgetsView: React.FC<BudgetsViewProps> = ({
@@ -31,6 +34,9 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   onUpdateCategory,
   onDeleteCategory,
   transactions,
+  members = [],
+  activeMemberId = 'all',
+  onSelectMember,
 }) => {
   const [showAddBillModal, setShowAddBillModal] = useState(false);
   const [billName, setBillName] = useState('');
@@ -45,10 +51,20 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const sym = config.currencySymbol || '$';
   const activeDate = new Date();
 
-  const totalIncome = transactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+  const isAllFamily = activeMemberId === 'all';
+  const defaultMember = members.find((m) => m.isDefault) || members[0];
+
+  const scopedTransactions = isAllFamily
+    ? transactions
+    : transactions.filter((t) => {
+        if (t.memberId) return t.memberId === activeMemberId;
+        return defaultMember ? defaultMember.id === activeMemberId : true;
+      });
+
+  const totalIncome = scopedTransactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const baseIncome = totalIncome > 0 ? totalIncome : (config.monthlyTarget > 0 ? config.monthlyTarget : 5000);
 
-  const breakdown = getCategoryBreakdown(transactions, categories);
+  const breakdown = getCategoryBreakdown(scopedTransactions, categories);
   const cycleInfo = getBillingCycleInfo(config.paydayAnchorDay, activeDate);
 
   // Compute metrics for categories with Rolling Daily mode enabled
@@ -74,7 +90,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         cat.name,
         monthlyBudget,
         config.paydayAnchorDay,
-        transactions,
+        scopedTransactions,
         activeDate
       ),
     };
@@ -148,6 +164,35 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 mt-2 flex flex-col gap-6 mb-16">
+      {/* All Family View-Only Notice Banner */}
+      {isAllFamily && (
+        <div className="bg-gradient-to-r from-[#006397]/10 via-[#0284c7]/10 to-[#f0f4f8] border border-[#006397]/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs animate-fade-in">
+          <div className="flex items-center gap-3 text-[#041627]">
+            <div className="w-10 h-10 rounded-xl bg-[#006397] text-white flex items-center justify-center shrink-0 shadow-xs">
+              <span className="material-symbols-outlined text-[20px]">diversity_3</span>
+            </div>
+            <div>
+              <div className="font-extrabold text-[#006397] text-sm flex items-center gap-1.5">
+                <span>All Family Budget Overview</span>
+                <span className="px-2 py-0.5 bg-[#006397] text-white text-[9px] font-extrabold uppercase rounded-full">Combined • View Only</span>
+              </div>
+              <div className="text-[#44474c] text-xs mt-0.5">
+                Showing aggregated household spending & category pacing. To create, edit, or adjust category budgets and fixed bills, switch to a personal account.
+              </div>
+            </div>
+          </div>
+          {members.length > 0 && onSelectMember && (
+            <button
+              onClick={() => onSelectMember(members[0].id)}
+              className="px-3.5 py-2 bg-[#006397] hover:bg-[#00476e] text-white font-bold rounded-xl shrink-0 transition-all cursor-pointer shadow-2xs text-xs active:scale-95 flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[15px]">person</span>
+              <span>Switch to {members[0].name}</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
@@ -322,15 +367,17 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
               </button>
             </div>
 
-            <button
-              onClick={() => {
-                setEditingCatForModal(null);
-                setShowAddCatModal(true);
-              }}
-              className="px-3 py-1.5 bg-[#006397] text-white font-bold text-xs rounded-xl hover:bg-[#00476e] transition-colors flex items-center gap-1 shadow-xs active:scale-95 shrink-0"
-            >
-              <span className="material-symbols-outlined text-[16px]">add</span> Add
-            </button>
+            {!isAllFamily && (
+              <button
+                onClick={() => {
+                  setEditingCatForModal(null);
+                  setShowAddCatModal(true);
+                }}
+                className="px-3 py-1.5 bg-[#006397] text-white font-bold text-xs rounded-xl hover:bg-[#00476e] transition-colors flex items-center gap-1 shadow-xs active:scale-95 shrink-0 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span> Add
+              </button>
+            )}
           </div>
         </div>
 
@@ -580,10 +627,11 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                     <div className="mt-2 pt-2 border-t border-[#e1e3e4]/60 flex justify-between items-center">
                       <div className="flex items-center gap-2">
                         {/* Rollover Toggle */}
-                        <label className="relative inline-flex items-center cursor-pointer" title="Monthly Rollover Switch">
+                        <label className={`relative inline-flex items-center ${isAllFamily ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`} title="Monthly Rollover Switch">
                           <input
                             type="checkbox"
                             checked={rolloverEnabled}
+                            disabled={isAllFamily}
                             onChange={(e) =>
                               onUpdateCategory(cat.id, { rolloverEnabled: e.target.checked })
                             }
@@ -596,27 +644,34 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            setEditingCatForModal(cat);
-                            setShowAddCatModal(true);
-                          }}
-                          className="p-1 text-[#006397] hover:bg-[#006397]/10 rounded-md transition-colors"
-                          title="Edit Category Details, Icon & Color"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">edit</span>
-                        </button>
-                        {categories.length > 1 && (
+                      {!isAllFamily && (
+                        <div className="flex items-center gap-1">
                           <button
-                            onClick={() => onDeleteCategory(cat.id)}
-                            className="p-1 text-[#ba1a1a] hover:bg-[#ffdad6] rounded-md transition-colors"
-                            title="Delete category"
+                            onClick={() => {
+                              setEditingCatForModal(cat);
+                              setShowAddCatModal(true);
+                            }}
+                            className="p-1 text-[#006397] hover:bg-[#006397]/10 rounded-md transition-colors"
+                            title="Edit Category Details, Icon & Color"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">edit</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              onUpdateCategory(cat.id, {
+                                hasAllocation: false,
+                                budgetLimit: 0,
+                                rollingDailyEnabled: false,
+                                rolloverEnabled: false,
+                              });
+                            }}
+                            className="p-1 text-[#ba1a1a] hover:bg-[#ffdad6] rounded-md transition-colors cursor-pointer"
+                            title="Remove budget allocation (moves category to Unallocated)"
                           >
                             <span className="material-symbols-outlined text-[16px]">delete</span>
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -670,15 +725,17 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => {
-                          setEditingCatForModal(cat);
-                          setShowAddCatModal(true);
-                        }}
-                        className="px-2.5 py-1 bg-white border border-[#006397]/30 text-[#006397] font-bold text-[11px] rounded-lg hover:bg-[#006397]/10 transition-colors shrink-0"
-                      >
-                        Add Allocation
-                      </button>
+                      {!isAllFamily && (
+                        <button
+                          onClick={() => {
+                            setEditingCatForModal(cat);
+                            setShowAddCatModal(true);
+                          }}
+                          className="px-2.5 py-1 bg-white border border-[#006397]/30 text-[#006397] font-bold text-[11px] rounded-lg hover:bg-[#006397]/10 transition-colors shrink-0 cursor-pointer"
+                        >
+                          Add Allocation
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -738,17 +795,19 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-start md:self-auto">
-                  <button
-                    onClick={() => {
-                      setEditingCatForModal(otherCat);
-                      setShowAddCatModal(true);
-                    }}
-                    className="px-3 py-1.5 bg-white border border-[#006397]/30 text-[#006397] font-bold text-xs rounded-xl hover:bg-[#006397]/10 transition-colors flex items-center gap-1 shadow-2xs"
-                  >
-                    <span className="material-symbols-outlined text-[15px]">edit</span> Edit Pool Allocation
-                  </button>
-                </div>
+                {!isAllFamily && (
+                  <div className="flex items-center gap-2 self-start md:self-auto">
+                    <button
+                      onClick={() => {
+                        setEditingCatForModal(otherCat);
+                        setShowAddCatModal(true);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-[#006397]/30 text-[#006397] font-bold text-xs rounded-xl hover:bg-[#006397]/10 transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">edit</span> Edit Pool Allocation
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Other Pool Spending Metrics */}
@@ -865,13 +924,15 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
               <h3 className="text-lg font-bold text-[#191c1d]">Fixed Bills</h3>
               <p className="text-xs text-[#44474c] mt-0.5">Excluded from daily pacing</p>
             </div>
-            <button
-              onClick={() => setShowAddBillModal(true)}
-              className="w-8 h-8 rounded-full bg-[#f3f4f5] flex items-center justify-center text-[#006397] hover:bg-[#e1e3e4] transition-colors"
-              title="Add fixed bill"
-            >
-              <span className="material-symbols-outlined text-sm">add</span>
-            </button>
+            {!isAllFamily && (
+              <button
+                onClick={() => setShowAddBillModal(true)}
+                className="w-8 h-8 rounded-full bg-[#f3f4f5] flex items-center justify-center text-[#006397] hover:bg-[#e1e3e4] transition-colors cursor-pointer"
+                title="Add fixed bill"
+              >
+                <span className="material-symbols-outlined text-sm">add</span>
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[260px] overflow-y-auto no-scrollbar pr-1">
@@ -896,10 +957,11 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
 
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-[#191c1d]">{sym}{bill.amount.toFixed(2)}</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                  <label className={`relative inline-flex items-center ${isAllFamily ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
                     <input
                       type="checkbox"
                       checked={bill.active}
+                      disabled={isAllFamily}
                       onChange={() => onToggleFixedBill(bill.id)}
                       className="sr-only peer"
                     />
