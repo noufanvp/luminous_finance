@@ -8,12 +8,27 @@ import {
 } from '../utils/finance';
 import { AddCategoryModal } from './AddCategoryModal';
 
+const BILL_ICONS = [
+  { icon: 'receipt', label: 'Bill' },
+  { icon: 'bolt', label: 'Electric' },
+  { icon: 'wifi', label: 'Internet' },
+  { icon: 'subscriptions', label: 'Streaming' },
+  { icon: 'home', label: 'Rent' },
+  { icon: 'directions_car', label: 'Vehicle' },
+  { icon: 'credit_card', label: 'Credit Card' },
+  { icon: 'smartphone', label: 'Phone' },
+  { icon: 'water_drop', label: 'Water' },
+  { icon: 'fitness_center', label: 'Gym' },
+];
+
 interface BudgetsViewProps {
   config: BudgetConfig;
   onUpdateConfig: (updated: Partial<BudgetConfig>) => void;
   fixedBills: FixedBill[];
   onToggleFixedBill: (id: string) => void;
   onAddFixedBill: (bill: Omit<FixedBill, 'id'>) => void;
+  onUpdateFixedBill?: (id: string, updated: Partial<FixedBill>) => void;
+  onDeleteFixedBill?: (id: string) => void;
   categories: CategoryTemplate[];
   onAddCategory: (cat: CategoryTemplate) => void;
   onUpdateCategory: (id: string, updated: Partial<CategoryTemplate>) => void;
@@ -30,6 +45,8 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   fixedBills,
   onToggleFixedBill,
   onAddFixedBill,
+  onUpdateFixedBill,
+  onDeleteFixedBill,
   categories,
   onAddCategory,
   onUpdateCategory,
@@ -40,15 +57,18 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   onSelectMember,
 }) => {
   const [showAddBillModal, setShowAddBillModal] = useState(false);
+  const [editingBill, setEditingBill] = useState<FixedBill | null>(null);
   const [billName, setBillName] = useState('');
   const [billAmount, setBillAmount] = useState('');
   const [billSchedule, setBillSchedule] = useState('Monthly on 1st');
+  const [billIcon, setBillIcon] = useState('receipt');
 
   const [showAddCatModal, setShowAddCatModal] = useState(false);
   const [editingCatForModal, setEditingCatForModal] = useState<CategoryTemplate | null>(null);
 
   const [modeFilter, setModeFilter] = useState<'all' | 'rolling' | 'standard'>('all');
   const [showSpentBreakdown, setShowSpentBreakdown] = useState(false);
+  const [showAllocatedBreakdown, setShowAllocatedBreakdown] = useState(false);
 
   const sym = config.currencySymbol || '₹';
   const activeDate = new Date();
@@ -124,16 +144,30 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const activeFixedBills = fixedBills.filter((b) => b.active);
   const totalFixedBillsCost = activeFixedBills.reduce((sum, b) => sum + (b.amount || 0), 0);
 
-  // Total allocated budget across categories vs monthly target budget
-  const totalBudgetAllocated = categories
+  // Major categories allocation (excluding 'Other' / unallocated category)
+  const majorCategoriesAllocated = categories
     .filter(
       (cat) =>
         (cat.type || 'expense') !== 'income' &&
         !cat.isSystemOther &&
         cat.name.toLowerCase() !== 'other' &&
+        cat.name.toLowerCase() !== 'other expense' &&
         cat.hasAllocation !== false
     )
     .reduce((sum, cat) => sum + (cat.budgetLimit ?? 0), 0);
+
+  // 'Other' / unallocated pool allocation
+  const otherCatObj = categories.find(
+    (c) =>
+      (c.type || 'expense') !== 'income' &&
+      (c.isSystemOther || c.name.toLowerCase() === 'other' || c.name.toLowerCase() === 'other expense')
+  );
+  const otherCategoryAllocated = otherCatObj
+    ? (otherCatObj.hasAllocation !== false ? (otherCatObj.budgetLimit ?? 0) : 0)
+    : 300;
+
+  // Total allocated budget across categories vs monthly target budget (including 'Other')
+  const totalBudgetAllocated = majorCategoriesAllocated + otherCategoryAllocated;
 
   const totalCommittedTarget = totalBudgetAllocated + totalFixedBillsCost;
   const unallocatedTargetBudget = targetBudget - totalCommittedTarget;
@@ -163,21 +197,61 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
     onUpdateConfig({ paydayAnchorDay: nextDay });
   };
 
-  const handleCreateBill = () => {
+  const handleOpenAddBill = () => {
+    setEditingBill(null);
+    setBillName('');
+    setBillAmount('');
+    setBillSchedule('Monthly on 1st');
+    setBillIcon('receipt');
+    setShowAddBillModal(true);
+  };
+
+  const handleOpenEditBill = (bill: FixedBill) => {
+    setEditingBill(bill);
+    setBillName(bill.name);
+    setBillAmount(bill.amount.toString());
+    setBillSchedule(bill.schedule || 'Monthly on 1st');
+    setBillIcon(bill.icon || 'receipt');
+    setShowAddBillModal(true);
+  };
+
+  const handleSaveBill = () => {
     const amt = parseFloat(billAmount);
     if (!billName.trim() || isNaN(amt) || amt <= 0) return;
 
-    onAddFixedBill({
-      name: billName.trim(),
-      amount: amt,
-      schedule: billSchedule.trim() || 'Monthly',
-      icon: 'receipt',
-      active: true,
-    });
+    if (editingBill) {
+      if (onUpdateFixedBill) {
+        onUpdateFixedBill(editingBill.id, {
+          name: billName.trim(),
+          amount: amt,
+          schedule: billSchedule.trim() || 'Monthly',
+          icon: billIcon || 'receipt',
+        });
+      }
+    } else {
+      onAddFixedBill({
+        name: billName.trim(),
+        amount: amt,
+        schedule: billSchedule.trim() || 'Monthly',
+        icon: billIcon || 'receipt',
+        active: true,
+      });
+    }
 
+    setEditingBill(null);
     setBillName('');
     setBillAmount('');
     setShowAddBillModal(false);
+  };
+
+  const handleDeleteBill = (id: string) => {
+    if (onDeleteFixedBill) {
+      onDeleteFixedBill(id);
+    }
+    if (editingBill && editingBill.id === id) {
+      setEditingBill(null);
+      setShowAddBillModal(false);
+    }
   };
 
   return (
@@ -313,14 +387,67 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                 {sym}{totalFixedBillsCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="flex justify-between text-[#74777d]">
-              <span className="flex items-center gap-1.5">
+            <div className="relative flex justify-between items-center text-[#74777d] py-0.5">
+              <button
+                type="button"
+                onClick={() => setShowAllocatedBreakdown((prev) => !prev)}
+                className="flex items-center gap-1 text-left group cursor-pointer select-none text-[#74777d] hover:text-[#006397] transition-colors"
+                title={showAllocatedBreakdown ? 'Close breakdown' : 'View allocation breakdown'}
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#006397]" />
-                <span>Allocated to categories:</span>
-              </span>
+                <span className="font-medium text-xs">Allocated to categories:</span>
+                <span
+                  style={{ fontSize: '14px', width: '14px', height: '14px', lineHeight: '14px' }}
+                  className={`material-symbols-outlined !text-[14px] inline-flex items-center justify-center transition-colors ${
+                    showAllocatedBreakdown ? 'text-[#006397]' : 'text-[#74777d] group-hover:text-[#006397]'
+                  }`}
+                >
+                  info
+                </span>
+              </button>
               <span className="font-mono font-bold text-[#006397]">
                 {sym}{totalBudgetAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
+
+              {/* Floating Popover: Identical to Card 2's popup */}
+              {showAllocatedBreakdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => setShowAllocatedBreakdown(false)}
+                  />
+                  <div className="absolute left-0 bottom-full mb-2 w-64 bg-white rounded-xl shadow-xl border border-[#e1e3e4] p-3 z-40 animate-in fade-in-50 zoom-in-95 duration-150">
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between items-center text-[#44474c]">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-[#006397]" />
+                          <span>Major categories:</span>
+                        </span>
+                        <span className="font-mono text-[#191c1d] font-bold">
+                          {sym}{majorCategoriesAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center text-[#74777d]">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-[#74777d]" />
+                          <span>Allocated for Others:</span>
+                        </span>
+                        <span className="font-mono font-bold text-[#44474c]">
+                          {sym}{otherCategoryAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="pt-1.5 mt-1.5 border-t border-[#f0f4f8] flex justify-between items-center text-xs font-semibold text-[#191c1d]">
+                        <span>Total Allocated:</span>
+                        <span className="font-mono text-[#006397] font-bold">
+                          {sym}{totalBudgetAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1122,7 +1249,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
             </div>
             {!isAllFamily && (
               <button
-                onClick={() => setShowAddBillModal(true)}
+                onClick={handleOpenAddBill}
                 className="w-8 h-8 rounded-full bg-[#f3f4f5] flex items-center justify-center text-[#006397] hover:bg-[#e1e3e4] transition-colors cursor-pointer"
                 title="Add fixed bill"
               >
@@ -1131,7 +1258,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[260px] overflow-y-auto no-scrollbar pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[280px] overflow-y-auto no-scrollbar pr-1">
             {fixedBills.map((bill) => (
               <div
                 key={bill.id}
@@ -1139,21 +1266,21 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                   !bill.active ? 'opacity-60' : ''
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center text-[#44474c] shadow-2xs border border-[#e1e3e4]">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 shrink-0 rounded-lg bg-white flex items-center justify-center text-[#44474c] shadow-2xs border border-[#e1e3e4]">
                     <span className="material-symbols-outlined text-lg">{bill.icon || 'receipt'}</span>
                   </div>
-                  <div>
-                    <p className={`text-xs font-semibold text-[#191c1d] ${!bill.active ? 'line-through' : ''}`}>
+                  <div className="truncate">
+                    <p className={`text-xs font-semibold text-[#191c1d] truncate ${!bill.active ? 'line-through' : ''}`}>
                       {bill.name}
                     </p>
-                    <p className="text-[10px] text-[#44474c]">{bill.schedule}</p>
+                    <p className="text-[10px] text-[#44474c] truncate">{bill.schedule}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#191c1d]">{sym}{bill.amount.toFixed(2)}</span>
-                  <label className={`relative inline-flex items-center ${isAllFamily ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-xs font-bold text-[#191c1d] mr-1">{sym}{bill.amount.toFixed(2)}</span>
+                  <label className={`relative inline-flex items-center ${isAllFamily ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`} title={bill.active ? 'Disable bill' : 'Enable bill'}>
                     <input
                       type="checkbox"
                       checked={bill.active}
@@ -1163,6 +1290,27 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                     />
                     <div className="w-8 h-4 bg-[#e1e3e4] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[#c4c6cd] after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#00a656]"></div>
                   </label>
+
+                  {!isAllFamily && (
+                    <div className="flex items-center gap-0.5 ml-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditBill(bill)}
+                        className="p-1 text-[#006397] hover:bg-[#006397]/10 rounded-md transition-colors cursor-pointer"
+                        title="Edit bill"
+                      >
+                        <span className="material-symbols-outlined text-[15px] block">edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBill(bill.id)}
+                        className="p-1 text-[#ba1a1a] hover:bg-[#ffdad6] rounded-md transition-colors cursor-pointer"
+                        title="Delete bill"
+                      >
+                        <span className="material-symbols-outlined text-[15px] block">delete</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -1170,11 +1318,26 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         </div>
       </div>
 
-      {/* Add Fixed Bill Modal */}
+      {/* Add / Edit Fixed Bill Modal */}
       {showAddBillModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#041627]/40 backdrop-blur-xs p-3 sm:p-4">
           <div className="bg-white rounded-2xl p-5 sm:p-6 max-w-sm w-full max-h-[88vh] shadow-2xl border border-[#c4c6cd]/20 flex flex-col my-auto">
-            <h3 className="font-bold text-lg text-[#191c1d] mb-4">Add Fixed Commitment</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-lg text-[#191c1d]">
+                {editingBill ? 'Edit Fixed Bill' : 'Add Fixed Commitment'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddBillModal(false);
+                  setEditingBill(null);
+                }}
+                className="text-[#74777d] hover:text-[#191c1d] p-1 rounded-lg hover:bg-[#f0f4f8] transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-lg block">close</span>
+              </button>
+            </div>
+
             <div className="space-y-3 mb-5">
               <div>
                 <label className="text-xs text-[#44474c] font-medium">Bill Name</label>
@@ -1183,17 +1346,18 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                   placeholder="e.g. Netflix, Electricity"
                   value={billName}
                   onChange={(e) => setBillName(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#f3f4f5] rounded-xl text-sm border border-[#c4c6cd]/20 mt-1"
+                  className="w-full px-3 py-2 bg-[#f3f4f5] rounded-xl text-sm border border-[#c4c6cd]/20 mt-1 focus:outline-none focus:ring-2 focus:ring-[#006397]/30"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#44474c] font-medium">Amount ($)</label>
+                <label className="text-xs text-[#44474c] font-medium">Amount ({sym})</label>
                 <input
                   type="number"
+                  step="0.01"
                   placeholder="e.g. 15.99"
                   value={billAmount}
                   onChange={(e) => setBillAmount(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#f3f4f5] rounded-xl text-sm border border-[#c4c6cd]/20 mt-1"
+                  className="w-full px-3 py-2 bg-[#f3f4f5] rounded-xl text-sm border border-[#c4c6cd]/20 mt-1 focus:outline-none focus:ring-2 focus:ring-[#006397]/30"
                 />
               </div>
               <div>
@@ -1203,21 +1367,57 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                   placeholder="Monthly on 1st"
                   value={billSchedule}
                   onChange={(e) => setBillSchedule(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#f3f4f5] rounded-xl text-sm border border-[#c4c6cd]/20 mt-1"
+                  className="w-full px-3 py-2 bg-[#f3f4f5] rounded-xl text-sm border border-[#c4c6cd]/20 mt-1 focus:outline-none focus:ring-2 focus:ring-[#006397]/30"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs text-[#44474c] font-medium block mb-1.5">Icon</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {BILL_ICONS.map((item) => (
+                    <button
+                      key={item.icon}
+                      type="button"
+                      onClick={() => setBillIcon(item.icon)}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                        billIcon === item.icon
+                          ? 'bg-[#006397] text-white shadow-xs scale-105'
+                          : 'bg-[#f3f4f5] text-[#44474c] hover:bg-[#e1e3e4]'
+                      }`}
+                      title={item.label}
+                    >
+                      <span className="material-symbols-outlined text-base">{item.icon}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-2">
+              {editingBill && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteBill(editingBill.id)}
+                  className="p-2.5 bg-[#ffdad6]/60 text-[#ba1a1a] hover:bg-[#ffdad6] rounded-xl transition-colors cursor-pointer flex items-center justify-center"
+                  title="Delete bill"
+                >
+                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                </button>
+              )}
               <button
-                onClick={handleCreateBill}
-                className="flex-1 py-2 bg-[#006397] text-white font-medium text-sm rounded-xl hover:bg-[#00476e]"
+                type="button"
+                onClick={handleSaveBill}
+                className="flex-1 py-2 bg-[#006397] text-white font-medium text-sm rounded-xl hover:bg-[#00476e] transition-colors cursor-pointer"
               >
-                Save Bill
+                {editingBill ? 'Save Changes' : 'Save Bill'}
               </button>
               <button
-                onClick={() => setShowAddBillModal(false)}
-                className="flex-1 py-2 bg-[#f3f4f5] text-[#44474c] font-medium text-sm rounded-xl hover:bg-[#e1e3e4]"
+                type="button"
+                onClick={() => {
+                  setShowAddBillModal(false);
+                  setEditingBill(null);
+                }}
+                className="px-4 py-2 bg-[#f3f4f5] text-[#44474c] font-medium text-sm rounded-xl hover:bg-[#e1e3e4] transition-colors cursor-pointer"
               >
                 Cancel
               </button>

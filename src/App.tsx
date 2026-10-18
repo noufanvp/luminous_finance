@@ -460,6 +460,16 @@ export default function App() {
     setFixedBills((prev) => [...prev, { ...bill, id: `bill-${Date.now()}` }]);
   };
 
+  const handleUpdateFixedBill = (id: string, updated: Partial<FixedBill>) => {
+    setFixedBills((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, ...updated } : b))
+    );
+  };
+
+  const handleDeleteFixedBill = (id: string) => {
+    setFixedBills((prev) => prev.filter((b) => b.id !== id));
+  };
+
   const handleAddCategory = (cat: CategoryTemplate) => {
     setCategories((prev) => [...prev, cat]);
   };
@@ -636,6 +646,8 @@ export default function App() {
                 fixedBills={fixedBills}
                 onToggleFixedBill={handleToggleFixedBill}
                 onAddFixedBill={handleAddFixedBill}
+                onUpdateFixedBill={handleUpdateFixedBill}
+                onDeleteFixedBill={handleDeleteFixedBill}
                 categories={categories}
                 onAddCategory={handleAddCategory}
                 onUpdateCategory={handleUpdateCategory}
