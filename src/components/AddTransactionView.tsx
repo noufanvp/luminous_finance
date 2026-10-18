@@ -76,9 +76,30 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     editingTransaction?.person || editingTransaction?.payee || editingTransaction?.tag || ''
   );
   const [showPersonSuggestions, setShowPersonSuggestions] = useState(false);
-  const [excludeFromBudget, setExcludeFromBudget] = useState<boolean>(
-    editingTransaction?.excludeFromBudget || false
-  );
+  // Budget Inclusion Mode: 'include' (full) | 'partial' | 'exclude'
+  const [budgetMode, setBudgetMode] = useState<'include' | 'partial' | 'exclude'>(() => {
+    if (editingTransaction?.excludeFromBudget) return 'exclude';
+    if (typeof editingTransaction?.budgetAmount === 'number' && !isNaN(editingTransaction.budgetAmount)) {
+      return 'partial';
+    }
+    return 'include';
+  });
+  const [customBudgetAmount, setCustomBudgetAmount] = useState<string>(() => {
+    if (typeof editingTransaction?.budgetAmount === 'number' && !isNaN(editingTransaction.budgetAmount)) {
+      return String(editingTransaction.budgetAmount);
+    }
+    return '';
+  });
+  const [returnedAmount, setReturnedAmount] = useState<string>(() => {
+    if (
+      editingTransaction &&
+      typeof editingTransaction.budgetAmount === 'number' &&
+      editingTransaction.amount > editingTransaction.budgetAmount
+    ) {
+      return String(editingTransaction.amount - editingTransaction.budgetAmount);
+    }
+    return '';
+  });
   const [showExcludeBudgetHelp, setShowExcludeBudgetHelp] = useState(false);
 
   // Extract previous unique memo and title entries for auto-suggestions (most recent first)
@@ -443,7 +464,9 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     setTxDate(getIsoDateString());
     setTxType('expense');
     setSelectedCategory(categories.length > 0 ? categories[0].name : 'Groceries');
-    setExcludeFromBudget(false);
+    setBudgetMode('include');
+    setCustomBudgetAmount('');
+    setReturnedAmount('');
   };
 
   const handleKeyPress = (key: string) => {
@@ -524,7 +547,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayExpr, memo, person, selectedCategory, txType, txDate, selectedAccountId, selectedToAccountId, excludeFromBudget]);
+  }, [displayExpr, memo, person, selectedCategory, txType, txDate, selectedAccountId, selectedToAccountId, budgetMode, customBudgetAmount]);
 
   const handleSave = () => {
     const finalAmount = calculatedValue > 0 ? calculatedValue : parseFloat(displayExpr) || 0;
@@ -541,6 +564,12 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         ? activeMemberId
         : (members.find((m) => m.isDefault)?.id || members[0]?.id || undefined));
 
+    const parsedBudgetAmount = parseFloat(customBudgetAmount);
+    const finalBudgetAmount = budgetMode === 'partial' && !isNaN(parsedBudgetAmount)
+      ? Math.max(0, parsedBudgetAmount)
+      : undefined;
+    const finalExcludeFromBudget = budgetMode === 'exclude' ? true : undefined;
+
     if (isEditMode && editingTransaction && onUpdateTransaction) {
       onUpdateTransaction(editingTransaction.id, {
         type: txType,
@@ -555,7 +584,8 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         accountId: selectedAccountId || undefined,
         toAccountId: txType === 'transfer' ? selectedToAccountId : undefined,
         isTransfer: txType === 'transfer',
-        excludeFromBudget: txType === 'expense' && excludeFromBudget ? true : undefined,
+        excludeFromBudget: txType === 'expense' && finalExcludeFromBudget ? true : undefined,
+        budgetAmount: txType === 'expense' && budgetMode === 'partial' ? finalBudgetAmount : undefined,
         rawExpression: displayExpr.trim() !== `${finalAmount}` ? displayExpr : undefined,
         memberId: targetMemberId,
       });
@@ -576,7 +606,8 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         accountId: selectedAccountId || undefined,
         toAccountId: txType === 'transfer' ? selectedToAccountId : undefined,
         isTransfer: txType === 'transfer',
-        excludeFromBudget: txType === 'expense' && excludeFromBudget ? true : undefined,
+        excludeFromBudget: txType === 'expense' && finalExcludeFromBudget ? true : undefined,
+        budgetAmount: txType === 'expense' && budgetMode === 'partial' ? finalBudgetAmount : undefined,
         rawExpression: displayExpr.trim() !== `${finalAmount}` ? displayExpr : undefined,
         isAutoParsed: true,
         memberId: targetMemberId,
@@ -1138,13 +1169,13 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
           )}
         </div>
 
-        {/* Exclude from Budget Toggle Row (Only applicable for Expenses) */}
+        {/* Budget Inclusion Mode Row (Only applicable for Expenses) */}
         {txType === 'expense' && (
-          <div className="pt-2 border-t border-[#f0f1f2] flex flex-col gap-1 text-xs">
+          <div className="pt-2 border-t border-[#f0f1f2] flex flex-col gap-2 text-xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <span className={`font-bold leading-tight ${excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
-                  Exclude from Budget
+                <span className="font-bold text-[#191c1d]">
+                  Budget Impact
                 </span>
                 <button
                   type="button"
@@ -1153,36 +1184,88 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                     showExcludeBudgetHelp ? 'bg-[#006397] text-white' : 'text-[#74777d] hover:text-[#006397] hover:bg-[#e0f2fe]'
                   }`}
                   title={showExcludeBudgetHelp ? 'Hide info' : 'What does this do?'}
-                  aria-label="Explain exclude from budget"
+                  aria-label="Explain budget impact"
                 >
                   <span className="material-symbols-outlined text-[12px]">info</span>
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setExcludeFromBudget((prev) => !prev)}
-                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
-                }`}
-                role="switch"
-                aria-checked={excludeFromBudget}
-                title={excludeFromBudget ? 'Excluded from budget. Click to include.' : 'Click to exclude from budget.'}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                    excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
+              {/* 3-Option Segmented Control */}
+              <div className="inline-flex p-0.5 bg-[#f0f2f5] rounded-xl border border-[#e1e3e4] text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBudgetMode('include');
+                    setCustomBudgetAmount('');
+                    setReturnedAmount('');
+                  }}
+                  className={`px-2.5 py-1 font-extrabold rounded-lg transition-all ${
+                    budgetMode === 'include'
+                      ? 'bg-white text-[#006397] shadow-xs'
+                      : 'text-[#74777d] hover:text-[#191c1d]'
                   }`}
-                />
-              </button>
+                >
+                  Full
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBudgetMode('partial');
+                    if (!customBudgetAmount && calculatedValue > 0) {
+                      setCustomBudgetAmount(String(calculatedValue));
+                    }
+                  }}
+                  className={`px-2.5 py-1 font-extrabold rounded-lg transition-all flex items-center gap-0.5 ${
+                    budgetMode === 'partial'
+                      ? 'bg-[#d97706] text-white shadow-xs'
+                      : 'text-[#74777d] hover:text-[#191c1d]'
+                  }`}
+                >
+                  Partial
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBudgetMode('exclude');
+                    setCustomBudgetAmount('');
+                    setReturnedAmount('');
+                  }}
+                  className={`px-2.5 py-1 font-extrabold rounded-lg transition-all ${
+                    budgetMode === 'exclude'
+                      ? 'bg-[#ba1a1a] text-white shadow-xs'
+                      : 'text-[#74777d] hover:text-[#191c1d]'
+                  }`}
+                >
+                  Exclude
+                </button>
+              </div>
             </div>
+
+            {/* Partial Budget Amount Input Box */}
+            {budgetMode === 'partial' && (
+              <div className="p-2.5 bg-[#fffbeb] rounded-xl border border-[#fde68a] animate-fade-in">
+                <label className="text-[10px] font-bold text-[#92400e] block mb-1">
+                  Count in Budget ({sym})
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder={calculatedValue > 0 ? String(calculatedValue) : '0'}
+                  value={customBudgetAmount}
+                  onChange={(e) => setCustomBudgetAmount(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white rounded-lg text-xs font-mono font-bold text-[#191c1d] border border-[#fde68a] focus:outline-none focus:ring-1 focus:ring-[#d97706]"
+                />
+              </div>
+            )}
 
             {showExcludeBudgetHelp && (
               <span className="text-[10px] text-[#006397] block animate-in fade-in duration-150">
-                {excludeFromBudget
-                  ? 'Ignored in category budget limits & daily pacing'
-                  : 'Counts toward monthly target & category limits'}
+                {budgetMode === 'include'
+                  ? 'Counts full amount toward monthly target & category limits'
+                  : budgetMode === 'partial'
+                  ? `Only ${sym}${parseFloat(customBudgetAmount) || 0} will count toward budget limits & pacing`
+                  : 'Completely ignored in category budget limits & daily pacing (0 budget impact)'}
               </span>
             )}
           </div>

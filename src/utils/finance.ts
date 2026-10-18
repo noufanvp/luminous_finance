@@ -36,6 +36,20 @@ export function getFamilyBudgetGoals(
   };
 }
 
+/**
+ * Returns the effective amount of a transaction that counts toward the budget.
+ * - If excludeFromBudget is true, returns 0.
+ * - If budgetAmount is explicitly set (e.g. partial reimbursement or partial include), returns budgetAmount.
+ * - Otherwise, returns the full transaction amount.
+ */
+export function getTransactionBudgetAmount(t: Transaction): number {
+  if (t.type !== 'expense' || t.isTransfer || t.excludeFromBudget) return 0;
+  if (typeof t.budgetAmount === 'number' && !isNaN(t.budgetAmount)) {
+    return Math.max(0, t.budgetAmount);
+  }
+  return t.amount;
+}
+
 export function calculateSummary(
   transactions: Transaction[],
   monthlyTarget: number,
@@ -43,7 +57,7 @@ export function calculateSummary(
 ) {
   const totalExpenses = transactions
     .filter((t) => t.type === 'expense' && !t.isTransfer && !t.excludeFromBudget)
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + getTransactionBudgetAmount(t), 0);
 
   const totalIncome = transactions
     .filter((t) => t.type === 'income' && !t.isTransfer && !t.excludeFromBudget)
@@ -98,7 +112,7 @@ export function getCategoryBreakdown(
   categories: CategoryTemplate[]
 ): CategoryBreakdown[] {
   const expenses = transactions.filter((t) => t.type === 'expense' && !t.isTransfer && !t.excludeFromBudget);
-  const totalSpent = expenses.reduce((sum, t) => sum + t.amount, 0);
+  const totalSpent = expenses.reduce((sum, t) => sum + getTransactionBudgetAmount(t), 0);
 
   // Find or default 'Other' category template
   const otherCatTemplate = categories.find(
@@ -131,13 +145,15 @@ export function getCategoryBreakdown(
   expenses.forEach((t) => {
     const rawCat = (t.category || 'Other').trim();
     const matched = categories.find((c) => c.name.toLowerCase() === rawCat.toLowerCase());
+    const bAmt = getTransactionBudgetAmount(t);
+    if (bAmt <= 0) return;
 
     if (matched && isAllocatedCat(matched)) {
-      allocatedMap[matched.name] = (allocatedMap[matched.name] || 0) + t.amount;
+      allocatedMap[matched.name] = (allocatedMap[matched.name] || 0) + bAmt;
     } else {
       // Belongs to unallocated category or 'Other' -> Count on "Other" allocation
-      otherPoolSpent += t.amount;
-      unallocatedMap[rawCat] = (unallocatedMap[rawCat] || 0) + t.amount;
+      otherPoolSpent += bAmt;
+      unallocatedMap[rawCat] = (unallocatedMap[rawCat] || 0) + bAmt;
     }
   });
 
@@ -451,7 +467,7 @@ export function getRollingDailyCategoryPacing(
       const tDate = parseTransactionDate(t.date).getTime();
       return tDate >= startMs && tDate <= endMs;
     })
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + getTransactionBudgetAmount(t), 0);
 
   const dailyBaseRate = N > 0 ? monthlyBudget / N : 0;
   const accumulatedTargetToDate = dailyBaseRate * d_cycle;

@@ -119,6 +119,10 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const daysLeftInCycle = Math.max(1, cycleInfo.daysRemainingInCycle);
   const totalEffectiveBudget = breakdown.reduce((sum, b) => sum + b.effectiveBudget, 0) || targetBudget || 3000;
 
+  // Active fixed bills
+  const activeFixedBills = fixedBills.filter((b) => b.active);
+  const totalFixedBillsCost = activeFixedBills.reduce((sum, b) => sum + (b.amount || 0), 0);
+
   // Total allocated budget across categories vs monthly target budget
   const totalBudgetAllocated = categories
     .filter(
@@ -130,8 +134,13 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
     )
     .reduce((sum, cat) => sum + (cat.budgetLimit ?? 0), 0);
 
-  const unallocatedTargetBudget = targetBudget - totalBudgetAllocated;
-  const allocationPercentage = targetBudget > 0 ? Math.round((totalBudgetAllocated / targetBudget) * 100) : 0;
+  const totalCommittedTarget = totalBudgetAllocated + totalFixedBillsCost;
+  const unallocatedTargetBudget = targetBudget - totalCommittedTarget;
+  const allocationPercentage = targetBudget > 0 ? Math.round((totalCommittedTarget / targetBudget) * 100) : 0;
+
+  // Total amount spent as of now that is included in budget
+  const totalBudgetSpent = totalAllocatedSpent + otherSpent;
+  const budgetSpentPercentage = targetBudget > 0 ? Math.round((totalBudgetSpent / targetBudget) * 100) : 0;
 
   const grossRemainingBudget = Math.max(0, totalEffectiveBudget - totalAllocatedSpent);
   const grossDailyTarget = grossRemainingBudget / daysLeftInCycle;
@@ -211,7 +220,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
       </div>
 
       {/* Budget Allocation & Pacing Metric Cards Grid */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Amount Left After Budget Allocation in Target Budget */}
         <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start mb-2">
@@ -237,13 +246,37 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
               </span>
             </div>
             {/* Miniature Allocation Progress Bar */}
-            <div className="w-full bg-[#f0f4f8] h-1.5 rounded-full overflow-hidden mt-2">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  unallocatedTargetBudget < 0 ? 'bg-[#ba1a1a]' : 'bg-[#006397]'
-                }`}
-                style={{ width: `${Math.min(100, allocationPercentage)}%` }}
-              />
+            <div className="w-full bg-[#f0f4f8] h-2 rounded-full overflow-hidden mt-2 flex">
+              {unallocatedTargetBudget < 0 ? (
+                <div
+                  className="h-full bg-[#ba1a1a] rounded-full transition-all duration-500 w-full"
+                  title="Over target limit"
+                />
+              ) : (
+                <>
+                  <div
+                    className="h-full bg-[#006397] transition-all duration-500"
+                    style={{
+                      width: `${targetBudget > 0 ? Math.min(100, (totalBudgetAllocated / targetBudget) * 100) : 0}%`,
+                    }}
+                    title={`Categories: ${sym}${totalBudgetAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  />
+                  <div
+                    className="h-full bg-[#d97706] transition-all duration-500"
+                    style={{
+                      width: `${
+                        targetBudget > 0
+                          ? Math.min(
+                              Math.max(0, 100 - (totalBudgetAllocated / targetBudget) * 100),
+                              (totalFixedBillsCost / targetBudget) * 100
+                            )
+                          : 0
+                      }%`,
+                    }}
+                    title={`Fixed Bills: ${sym}${totalFixedBillsCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  />
+                </>
+              )}
             </div>
           </div>
 
@@ -270,13 +303,95 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
               </div>
             )}
             <div className="flex justify-between text-[#74777d]">
-              <span>Allocated to categories:</span>
-              <span className="font-mono font-bold text-[#006397]">{sym}{totalBudgetAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#d97706]" />
+                <span>Fixed Bills ({activeFixedBills.length} active):</span>
+              </span>
+              <span className="font-mono font-bold text-[#d97706]">
+                {sym}{totalFixedBillsCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex justify-between text-[#74777d]">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#006397]" />
+                <span>Allocated to categories:</span>
+              </span>
+              <span className="font-mono font-bold text-[#006397]">
+                {sym}{totalBudgetAllocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Total Net Daily Available (After 'Others' Deducted) */}
+        {/* Card 2: Amount Spent Included in Budget As of Now */}
+        <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
+              Spent in Budget
+            </span>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+              totalBudgetSpent <= targetBudget ? 'bg-[#00a656]/10 text-[#00a656]' : 'bg-[#ba1a1a]/10 text-[#ba1a1a]'
+            }`}>
+              {budgetSpentPercentage}% of Target
+            </span>
+          </div>
+
+          <div className="my-2">
+            <div className="flex items-baseline gap-1">
+              <span className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${
+                totalBudgetSpent > targetBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'
+              }`}>
+                {sym}{totalBudgetSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-xs text-[#74777d]">
+                spent as of now
+              </span>
+            </div>
+            {/* Spending vs Target Progress Bar */}
+            <div className="w-full bg-[#f0f4f8] h-2 rounded-full overflow-hidden mt-2">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  totalBudgetSpent > targetBudget
+                    ? 'bg-[#ba1a1a]'
+                    : budgetSpentPercentage >= 80
+                    ? 'bg-[#e06d00]'
+                    : 'bg-[#006397]'
+                }`}
+                style={{ width: `${Math.min(100, budgetSpentPercentage)}%` }}
+                title={`${budgetSpentPercentage}% of target budget spent`}
+              />
+            </div>
+          </div>
+
+          <div className="pt-2.5 border-t border-[#f0f4f8] text-xs space-y-1">
+            <div className="flex justify-between text-[#44474c]">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#006397]" />
+                <span>Allocated categories:</span>
+              </span>
+              <span className="font-mono text-[#191c1d] font-bold">
+                {sym}{totalAllocatedSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex justify-between text-[#74777d]">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#74777d]" />
+                <span>'Other' / Unallocated:</span>
+              </span>
+              <span className="font-mono font-bold text-[#44474c]">
+                {sym}{otherSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex justify-between text-[#74777d]">
+              <span>Remaining in target:</span>
+              <span className={`font-mono font-bold ${targetBudget - totalBudgetSpent >= 0 ? 'text-[#00a656]' : 'text-[#ba1a1a]'}`}>
+                {sym}{Math.max(0, targetBudget - totalBudgetSpent).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Total Net Daily Available (After 'Others' Deducted) */}
         <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
@@ -308,7 +423,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
           </div>
         </div>
 
-        {/* Card 3: Rolling Daily Pool Summary */}
+        {/* Card 4: Rolling Daily Pool Summary */}
         <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
@@ -941,8 +1056,13 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         <div className="md:col-span-8 bg-white rounded-2xl shadow-ambient p-5 border border-[#e1e3e4] flex flex-col">
           <div className="flex justify-between items-center mb-4 pb-3 border-b border-[#e1e3e4]">
             <div>
-              <h3 className="text-lg font-bold text-[#191c1d]">Fixed Bills</h3>
-              <p className="text-xs text-[#44474c] mt-0.5">Excluded from daily pacing</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold text-[#191c1d]">Fixed Bills</h3>
+                <span className="bg-[#d97706]/10 text-[#d97706] text-xs font-bold px-2 py-0.5 rounded-full font-mono">
+                  {sym}{totalFixedBillsCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <p className="text-xs text-[#44474c] mt-0.5">Deducted from target budget • Excluded from daily pacing</p>
             </div>
             {!isAllFamily && (
               <button

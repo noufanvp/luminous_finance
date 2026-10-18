@@ -42,6 +42,7 @@ export interface Transaction {
   toAccountId?: string;    // Destination bank account ID for transfers
   isTransfer?: boolean;    // Indicates internal money transfer between accounts
   excludeFromBudget?: boolean; // When true, excludes from budget allocation and pacing calculations
+  budgetAmount?: number;       // Custom partial budget impact (e.g. 20 of 200 when 180 is returned/reimbursed)
   memberId?: string;       // ID of family member associated with this transaction
 }
 

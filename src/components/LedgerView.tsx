@@ -120,29 +120,40 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
   const [showTagModal, setShowTagModal] = useState(false);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
 
-  // Extract unique categories for filter dropdown
+  // Extract unique categories for filter dropdown based on selected type filter
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
     transactions.forEach((tx) => {
+      if (filterType !== 'all' && tx.type !== filterType) return;
       if (tx.category && tx.category.trim()) set.add(tx.category.trim());
     });
     categories?.forEach((c) => {
+      const catType = c.type || 'expense';
+      if (filterType !== 'all' && catType !== filterType) return;
       if (c.name && c.name.trim()) set.add(c.name.trim());
     });
     return Array.from(set).sort();
-  }, [transactions, categories]);
+  }, [transactions, categories, filterType]);
 
-  // Map of category -> count
+  // Map of category -> count based on selected type filter
   const categoryCounts = useMemo(() => {
     const map: Record<string, number> = {};
     transactions.forEach((tx) => {
+      if (filterType !== 'all' && tx.type !== filterType) return;
       if (tx.category && tx.category.trim()) {
         const key = tx.category.trim();
         map[key] = (map[key] || 0) + 1;
       }
     });
     return map;
-  }, [transactions]);
+  }, [transactions, filterType]);
+
+  // Reset category filter if selected category is not part of the active type filter
+  useEffect(() => {
+    if (selectedCategoryFilter !== 'all' && !uniqueCategories.includes(selectedCategoryFilter)) {
+      setSelectedCategoryFilter('all');
+    }
+  }, [uniqueCategories, selectedCategoryFilter]);
 
   // Extract unique tags/persons for filter dropdown
   const uniquePersons = useMemo(() => {
@@ -223,6 +234,9 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     person: string;
     date: string;
     excludeFromBudget: boolean;
+    budgetMode?: 'include' | 'partial' | 'exclude';
+    budgetAmount?: string;
+    returnedAmount?: string;
   }>({
     type: 'expense',
     category: '',
@@ -232,6 +246,9 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     person: '',
     date: '',
     excludeFromBudget: false,
+    budgetMode: 'include',
+    budgetAmount: '',
+    returnedAmount: '',
   });
 
   // Lock body scroll when modal is open
@@ -337,6 +354,15 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       person: tx.person || tx.payee || tx.tag || '',
       date: tx.date || '',
       excludeFromBudget: tx.excludeFromBudget || false,
+      budgetMode: tx.excludeFromBudget
+        ? 'exclude'
+        : typeof tx.budgetAmount === 'number' && !isNaN(tx.budgetAmount)
+        ? 'partial'
+        : 'include',
+      budgetAmount: typeof tx.budgetAmount === 'number' && !isNaN(tx.budgetAmount) ? String(tx.budgetAmount) : '',
+      returnedAmount: typeof tx.budgetAmount === 'number' && tx.amount > tx.budgetAmount
+        ? String(tx.amount - tx.budgetAmount)
+        : '',
     });
     setIsEditing(true);
   };
@@ -358,7 +384,10 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       payee: personText || undefined,
       tag: personText || undefined,
       date: normalizeTransactionDate(editForm.date),
-      excludeFromBudget: editForm.type === 'expense' && editForm.excludeFromBudget ? true : undefined,
+      excludeFromBudget: editForm.type === 'expense' && editForm.budgetMode === 'exclude' ? true : undefined,
+      budgetAmount: editForm.type === 'expense' && editForm.budgetMode === 'partial' && !isNaN(parseFloat(editForm.budgetAmount || ''))
+        ? Math.max(0, parseFloat(editForm.budgetAmount || ''))
+        : undefined,
     };
 
     onUpdateTransaction(selectedTx.id, updated);
@@ -856,7 +885,11 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                 }`}
               >
                 <option value="all">
-                  All Categories {uniqueCategories.length > 0 ? `(${uniqueCategories.length})` : ''}
+                  {filterType === 'expense'
+                    ? `All Expense Categories ${uniqueCategories.length > 0 ? `(${uniqueCategories.length})` : ''}`
+                    : filterType === 'income'
+                    ? `All Income Categories ${uniqueCategories.length > 0 ? `(${uniqueCategories.length})` : ''}`
+                    : `All Categories ${uniqueCategories.length > 0 ? `(${uniqueCategories.length})` : ''}`}
                 </option>
                 {uniqueCategories.map((cat) => (
                   <option key={cat} value={cat}>
@@ -1162,7 +1195,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                           <span className="text-sm font-semibold text-[#191c1d]">
                             {tx.category}
                           </span>
-                          {selectedMemberFilter === 'all' && (
+                          {activeMemberId === 'all' && selectedMemberFilter === 'all' && (
                             (() => {
                               const txMember = tx.memberId
                                 ? members.find((m) => m.id === tx.memberId)
@@ -1186,8 +1219,14 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                           )}
                           {tx.type === 'expense' && tx.excludeFromBudget && (
                             <span
-                              className="w-2 h-2 rounded-full bg-[#ba1a1a]/80 shrink-0"
+                              className="w-2 h-2 rounded-full bg-[#ba1a1a] shrink-0"
                               title="Excluded from budget"
+                            />
+                          )}
+                          {tx.type === 'expense' && !tx.excludeFromBudget && typeof tx.budgetAmount === 'number' && (
+                            <span
+                              className="w-2 h-2 rounded-full bg-[#eab308] shrink-0"
+                              title={`Partial: ${sym}${tx.budgetAmount.toFixed(2)}`}
                             />
                           )}
                         </div>
@@ -1322,7 +1361,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                       {selectedTx.type === 'income' ? '+' : '-'}{sym}{selectedTx.amount.toFixed(2)}
                     </span>
                   </div>
-                  {selectedTx.memberId && (
+                  {activeMemberId === 'all' && selectedTx.memberId && (
                     <div className="flex justify-between text-sm items-center">
                       <span className="text-[#44474c]">Family Member:</span>
                       <span className="font-bold text-[#006397] flex items-center gap-1.5 bg-[#f0f4f8] px-2 py-0.5 rounded-lg border border-[#d2e4fb]/60 text-xs">
@@ -1356,13 +1395,19 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                   )}
                   {selectedTx.type === 'expense' && (
                     <div className="flex justify-between text-sm items-center">
-                      <span className="text-[#44474c]">Budget:</span>
+                      <span className="text-[#44474c]">Budget Impact:</span>
                       <span className={`font-bold text-xs px-2.5 py-0.5 rounded-full ${
                         selectedTx.excludeFromBudget
-                          ? 'bg-[#f3f4f5] text-[#74777d] border border-[#c4c6cd]/30'
-                          : 'bg-[#006397]/10 text-[#006397]'
+                          ? 'bg-[#ba1a1a]/10 text-[#ba1a1a] border border-[#ba1a1a]/20'
+                          : typeof selectedTx.budgetAmount === 'number'
+                          ? 'bg-[#fef9c3] text-[#854d0e] border border-[#fde047]'
+                          : 'bg-[#006397]/10 text-[#006397] border border-[#006397]/20'
                       }`}>
-                        {selectedTx.excludeFromBudget ? 'Excluded' : 'Included'}
+                        {selectedTx.excludeFromBudget
+                          ? 'Excluded'
+                          : typeof selectedTx.budgetAmount === 'number'
+                          ? `Partial: ${sym}${selectedTx.budgetAmount.toFixed(2)}`
+                          : 'Included'}
                       </span>
                     </div>
                   )}
@@ -1519,13 +1564,13 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                   />
                 </div>
 
-                {/* Exclude from Budget Toggle (Only for Expense) */}
+                {/* Budget Inclusion Mode Row (Only for Expense) */}
                 {editForm.type === 'expense' && (
-                  <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] flex flex-col gap-1">
+                  <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-xs font-bold ${editForm.excludeFromBudget ? 'text-[#ba1a1a]' : 'text-[#191c1d]'}`}>
-                          Exclude from Budget
+                        <span className="text-xs font-bold text-[#191c1d]">
+                          Budget Impact
                         </span>
                         <button
                           type="button"
@@ -1534,32 +1579,84 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                             showEditExcludeHelp ? 'bg-[#006397] text-white' : 'text-[#74777d] hover:text-[#006397] hover:bg-[#e0f2fe]'
                           }`}
                           title={showEditExcludeHelp ? 'Hide info' : 'What does this do?'}
-                          aria-label="Explain exclude from budget"
+                          aria-label="Explain budget impact"
                         >
                           <span className="material-symbols-outlined text-[12px]">info</span>
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setEditForm((prev) => ({ ...prev, excludeFromBudget: !prev.excludeFromBudget }))}
-                        className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          editForm.excludeFromBudget ? 'bg-[#ba1a1a]' : 'bg-[#c4c6cd]'
-                        }`}
-                        role="switch"
-                        aria-checked={editForm.excludeFromBudget}
-                        title={editForm.excludeFromBudget ? 'Excluded from budget' : 'Click to exclude from budget'}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                            editForm.excludeFromBudget ? 'translate-x-5' : 'translate-x-0'
+
+                      <div className="inline-flex p-0.5 bg-[#e5e7eb] rounded-xl text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setEditForm((prev) => ({ ...prev, budgetMode: 'include', excludeFromBudget: false, budgetAmount: '', returnedAmount: '' }))}
+                          className={`px-2.5 py-1 font-bold rounded-lg transition-all ${
+                            (editForm.budgetMode || 'include') === 'include'
+                              ? 'bg-white text-[#006397] shadow-xs'
+                              : 'text-[#74777d] hover:text-[#191c1d]'
                           }`}
-                        />
-                      </button>
+                        >
+                          Full
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditForm((prev) => ({
+                            ...prev,
+                            budgetMode: 'partial',
+                            excludeFromBudget: false,
+                            budgetAmount: prev.budgetAmount || prev.amount || '',
+                          }))}
+                          className={`px-2.5 py-1 font-bold rounded-lg transition-all ${
+                            editForm.budgetMode === 'partial'
+                              ? 'bg-[#d97706] text-white shadow-xs'
+                              : 'text-[#74777d] hover:text-[#191c1d]'
+                          }`}
+                        >
+                          Partial
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditForm((prev) => ({ ...prev, budgetMode: 'exclude', excludeFromBudget: true, budgetAmount: '', returnedAmount: '' }))}
+                          className={`px-2.5 py-1 font-bold rounded-lg transition-all ${
+                            editForm.budgetMode === 'exclude'
+                              ? 'bg-[#ba1a1a] text-white shadow-xs'
+                              : 'text-[#74777d] hover:text-[#191c1d]'
+                          }`}
+                        >
+                          Exclude
+                        </button>
+                      </div>
                     </div>
+
+                    {editForm.budgetMode === 'partial' && (
+                      <div className="p-2.5 bg-[#fffbeb] rounded-xl border border-[#fde68a] animate-fade-in">
+                        <label className="text-[10px] font-bold text-[#92400e] block mb-1">
+                          Count in Budget ({sym})
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          placeholder={editForm.amount || '0'}
+                          value={editForm.budgetAmount || ''}
+                          onChange={(e) => {
+                            const valStr = e.target.value;
+                            setEditForm((prev) => ({
+                              ...prev,
+                              budgetAmount: valStr,
+                            }));
+                          }}
+                          className="w-full px-2.5 py-1.5 bg-white rounded-lg text-xs font-mono font-bold text-[#191c1d] border border-[#fde68a] focus:outline-none focus:ring-1 focus:ring-[#d97706]"
+                        />
+                      </div>
+                    )}
+
                     {showEditExcludeHelp && (
                       <span className="text-[10px] text-[#006397] block animate-in fade-in duration-150">
-                        {editForm.excludeFromBudget ? 'Ignored in budget limits & daily pacing' : 'Counts toward monthly target & category limits'}
+                        {editForm.budgetMode === 'include' || !editForm.budgetMode
+                          ? 'Counts full amount toward monthly target & category limits'
+                          : editForm.budgetMode === 'partial'
+                          ? `Only ${sym}${parseFloat(editForm.budgetAmount || '') || 0} counts toward budget limits & pacing`
+                          : 'Completely ignored in budget limits & daily pacing (0 budget impact)'}
                       </span>
                     )}
                   </div>
