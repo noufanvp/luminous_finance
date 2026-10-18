@@ -90,17 +90,20 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     }
     return '';
   });
-  const [returnedAmount, setReturnedAmount] = useState<string>(() => {
-    if (
-      editingTransaction &&
-      typeof editingTransaction.budgetAmount === 'number' &&
-      editingTransaction.amount > editingTransaction.budgetAmount
-    ) {
-      return String(editingTransaction.amount - editingTransaction.budgetAmount);
-    }
-    return '';
-  });
   const [showExcludeBudgetHelp, setShowExcludeBudgetHelp] = useState(false);
+
+  // Split Repayment State (For Income: mark as repayment which reduces 'Spent in Budget')
+  const [isSplitRepayment, setIsSplitRepayment] = useState<boolean>(() => {
+    return Boolean(editingTransaction?.isSplitRepayment);
+  });
+
+  useEffect(() => {
+    if (editingTransaction) {
+      setIsSplitRepayment(Boolean(editingTransaction.isSplitRepayment));
+    } else {
+      setIsSplitRepayment(false);
+    }
+  }, [editingTransaction]);
 
   // Extract previous unique memo and title entries for auto-suggestions (most recent first)
   const previousMemos = useMemo(() => {
@@ -346,6 +349,8 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     }
   }, [showAllCategoriesModal]);
 
+
+
   const formatDisplayDate = (dateStr: string): string => {
     const isoStr = normalizeTransactionDate(dateStr);
     const nowIso = getIsoDateString();
@@ -466,7 +471,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
     setSelectedCategory(categories.length > 0 ? categories[0].name : 'Groceries');
     setBudgetMode('include');
     setCustomBudgetAmount('');
-    setReturnedAmount('');
+    setIsSplitRepayment(false);
   };
 
   const handleKeyPress = (key: string) => {
@@ -586,8 +591,10 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         isTransfer: txType === 'transfer',
         excludeFromBudget: txType === 'expense' && finalExcludeFromBudget ? true : undefined,
         budgetAmount: txType === 'expense' && budgetMode === 'partial' ? finalBudgetAmount : undefined,
+        initialBudgetAmount: txType === 'expense' && budgetMode === 'partial' ? (editingTransaction?.initialBudgetAmount ?? finalBudgetAmount) : undefined,
         rawExpression: displayExpr.trim() !== `${finalAmount}` ? displayExpr : undefined,
         memberId: targetMemberId,
+        isSplitRepayment: txType === 'income' && isSplitRepayment ? true : undefined,
       });
       if (onClearEditingTransaction) {
         onClearEditingTransaction();
@@ -608,9 +615,11 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
         isTransfer: txType === 'transfer',
         excludeFromBudget: txType === 'expense' && finalExcludeFromBudget ? true : undefined,
         budgetAmount: txType === 'expense' && budgetMode === 'partial' ? finalBudgetAmount : undefined,
+        initialBudgetAmount: txType === 'expense' && budgetMode === 'partial' ? finalBudgetAmount : undefined,
         rawExpression: displayExpr.trim() !== `${finalAmount}` ? displayExpr : undefined,
         isAutoParsed: true,
         memberId: targetMemberId,
+        isSplitRepayment: txType === 'income' && isSplitRepayment ? true : undefined,
       });
     }
 
@@ -1169,6 +1178,8 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
           )}
         </div>
 
+
+
         {/* Budget Inclusion Mode Row (Only applicable for Expenses) */}
         {txType === 'expense' && (
           <div className="pt-2 border-t border-[#f0f1f2] flex flex-col gap-2 text-xs">
@@ -1197,7 +1208,6 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                   onClick={() => {
                     setBudgetMode('include');
                     setCustomBudgetAmount('');
-                    setReturnedAmount('');
                   }}
                   className={`px-2.5 py-1 font-extrabold rounded-lg transition-all ${
                     budgetMode === 'include'
@@ -1228,7 +1238,6 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                   onClick={() => {
                     setBudgetMode('exclude');
                     setCustomBudgetAmount('');
-                    setReturnedAmount('');
                   }}
                   className={`px-2.5 py-1 font-extrabold rounded-lg transition-all ${
                     budgetMode === 'exclude'
@@ -1251,6 +1260,7 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                   type="number"
                   step="any"
                   min="0"
+                  max={calculatedValue > 0 ? calculatedValue : undefined}
                   placeholder={calculatedValue > 0 ? String(calculatedValue) : '0'}
                   value={customBudgetAmount}
                   onChange={(e) => setCustomBudgetAmount(e.target.value)}
@@ -1268,6 +1278,44 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
                   : 'Completely ignored in category budget limits & daily pacing (0 budget impact)'}
               </span>
             )}
+          </div>
+        )}
+
+        {/* Split Repayment Section (Only applicable for Income) */}
+        {txType === 'income' && (
+          <div className="pt-2 border-t border-[#f0f1f2] flex items-center justify-between text-xs animate-fade-in">
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
+                isSplitRepayment ? 'bg-[#059669]/15 text-[#059669]' : 'bg-[#f0f2f5] text-[#74777d]'
+              }`}>
+                <span className="material-symbols-outlined text-[16px]">call_split</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-[#191c1d]">
+                  Split Repayment
+                </span>
+                <span className="text-[10px] text-[#74777d]">
+                  Reduces 'Spent in Budget' directly
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsSplitRepayment((prev) => !prev)}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isSplitRepayment ? 'bg-[#059669]' : 'bg-[#e5e7eb]'
+              }`}
+              role="switch"
+              aria-checked={isSplitRepayment}
+              aria-label="Toggle split repayment"
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                  isSplitRepayment ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         )}
       </div>
@@ -2003,6 +2051,8 @@ export const AddTransactionView: React.FC<AddTransactionViewProps> = ({
           </div>
         </div>
       )}
+
+
 
       {/* Gemini AI Quick-Log Modal */}
       <AiQuickLogModal

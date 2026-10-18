@@ -350,7 +350,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span className="font-mono font-bold">-{sym}{otherDailyImpact.toFixed(2)}/day</span>
                   </div>
                   <div className="flex justify-between items-center font-extrabold text-[#00a656] pt-2 border-t border-[#e1e3e4]">
-                    <span>Net Available Per Day:</span>
+                    <span>Available Per Day:</span>
                     <span className="font-mono text-sm">{sym}{summary.dailyAllowance.toFixed(2)}/day</span>
                   </div>
                 </div>

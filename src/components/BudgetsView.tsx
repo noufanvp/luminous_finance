@@ -48,6 +48,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const [editingCatForModal, setEditingCatForModal] = useState<CategoryTemplate | null>(null);
 
   const [modeFilter, setModeFilter] = useState<'all' | 'rolling' | 'standard'>('all');
+  const [showSpentBreakdown, setShowSpentBreakdown] = useState(false);
 
   const sym = config.currencySymbol || '₹';
   const activeDate = new Date();
@@ -138,17 +139,22 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const unallocatedTargetBudget = targetBudget - totalCommittedTarget;
   const allocationPercentage = targetBudget > 0 ? Math.round((totalCommittedTarget / targetBudget) * 100) : 0;
 
+  // Split Repayments in this billing cycle (reduces Spent in Budget)
+  const totalSplitRepayments = scopedTransactions
+    .filter((t) => t.type === 'income' && !t.isTransfer && !t.excludeFromBudget && t.isSplitRepayment)
+    .reduce((sum, t) => sum + t.amount, 0);
+
   // Total amount spent as of now that is included in budget
-  const totalBudgetSpent = totalAllocatedSpent + otherSpent;
+  const totalBudgetSpent = Math.max(0, totalAllocatedSpent + otherSpent - totalSplitRepayments);
   const budgetSpentPercentage = targetBudget > 0 ? Math.round((totalBudgetSpent / targetBudget) * 100) : 0;
 
   const grossRemainingBudget = Math.max(0, totalEffectiveBudget - totalAllocatedSpent);
   const grossDailyTarget = grossRemainingBudget / daysLeftInCycle;
   const dailyOthersDeduction = otherSpent / daysLeftInCycle;
 
-  const netRemainingBudget = Math.max(0, totalEffectiveBudget - totalAllocatedSpent - otherSpent);
+  const netRemainingBudget = Math.max(0, totalEffectiveBudget - totalBudgetSpent);
   const netDailyAvailablePerDay = netRemainingBudget / daysLeftInCycle;
-  const netRollingAvailableToday = totalRollingAvailableToday - otherSpent;
+  const netRollingAvailableToday = Math.max(0, totalRollingAvailableToday - otherSpent + totalSplitRepayments);
 
   const handleDayChange = (delta: number) => {
     let nextDay = config.paydayAnchorDay + delta;
@@ -225,7 +231,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
-              Target Budget Left
+              Target Left
             </span>
             <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
               unallocatedTargetBudget >= 0 ? 'bg-[#00a656]/10 text-[#00a656]' : 'bg-[#ba1a1a]/10 text-[#ba1a1a]'
@@ -235,14 +241,14 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
           </div>
 
           <div className="my-2">
-            <div className="flex items-baseline gap-1">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
               <span className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${
                 unallocatedTargetBudget >= 0 ? 'text-[#00a656]' : 'text-[#ba1a1a]'
               }`}>
                 {unallocatedTargetBudget < 0 ? '-' : ''}{sym}{Math.abs(unallocatedTargetBudget).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-xs text-[#74777d]">
-                {unallocatedTargetBudget >= 0 ? 'unallocated' : 'over limit'}
+              <span className="text-sm sm:text-base font-bold text-[#74777d]">
+                / {sym}{targetBudget.toLocaleString('en-US', { minimumFractionDigits: targetBudget % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
               </span>
             </div>
             {/* Miniature Allocation Progress Bar */}
@@ -281,10 +287,6 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
           </div>
 
           <div className="pt-2.5 border-t border-[#f0f4f8] text-xs space-y-1">
-            <div className="flex justify-between text-[#44474c]">
-              <span>{isAllFamily ? 'Combined Family Target:' : 'Monthly Target:'}</span>
-              <span className="font-mono text-[#191c1d] font-bold">{sym}{targetBudget.toLocaleString('en-US')}</span>
-            </div>
             {isAllFamily && members.length > 0 && (
               <div className="pt-1 pb-1 flex flex-wrap gap-1">
                 {members.map((m) => {
@@ -343,9 +345,6 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
               }`}>
                 {sym}{totalBudgetSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-xs text-[#74777d]">
-                spent as of now
-              </span>
             </div>
             {/* Spending vs Target Progress Bar */}
             <div className="w-full bg-[#f0f4f8] h-2 rounded-full overflow-hidden mt-2">
@@ -364,26 +363,83 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
           </div>
 
           <div className="pt-2.5 border-t border-[#f0f4f8] text-xs space-y-1">
-            <div className="flex justify-between text-[#44474c]">
-              <span className="flex items-center gap-1.5">
+            <div className="relative flex items-center text-[#44474c] py-0.5">
+              <button
+                type="button"
+                onClick={() => setShowSpentBreakdown((prev) => !prev)}
+                className="flex items-center gap-1 text-left group cursor-pointer select-none text-[#44474c] hover:text-[#006397] transition-colors"
+                title={showSpentBreakdown ? 'Close breakdown' : 'View spending breakdown'}
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#006397]" />
-                <span>Allocated categories:</span>
-              </span>
-              <span className="font-mono text-[#191c1d] font-bold">
-                {sym}{totalAllocatedSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
+                <span className="font-medium text-xs">Breakdown:</span>
+                <span
+                  style={{ fontSize: '14px', width: '14px', height: '14px', lineHeight: '14px' }}
+                  className={`material-symbols-outlined !text-[14px] inline-flex items-center justify-center transition-colors ${
+                    showSpentBreakdown ? 'text-[#006397]' : 'text-[#74777d] group-hover:text-[#006397]'
+                  }`}
+                >
+                  info
+                </span>
+              </button>
+
+              {/* Floating Popover: Preserves exact 2-line card height */}
+              {showSpentBreakdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => setShowSpentBreakdown(false)}
+                  />
+                  <div className="absolute left-0 bottom-full mb-2 w-64 bg-white rounded-xl shadow-xl border border-[#e1e3e4] p-3 z-40 animate-in fade-in-50 zoom-in-95 duration-150">
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between items-center text-[#44474c]">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-[#006397]" />
+                          <span>Allocated categories:</span>
+                        </span>
+                        <span className="font-mono text-[#191c1d] font-bold">
+                          {sym}{totalAllocatedSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center text-[#74777d]">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-[#74777d]" />
+                          <span>'Other' / Unallocated:</span>
+                        </span>
+                        <span className="font-mono font-bold text-[#44474c]">
+                          {sym}{otherSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      {totalSplitRepayments > 0 && (
+                        <div className="flex justify-between items-center text-[#059669]">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#059669]" />
+                            <span>Split Repayments:</span>
+                          </span>
+                          <span className="font-mono font-bold text-[#059669]">
+                            -{sym}{totalSplitRepayments.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="pt-1.5 mt-1.5 border-t border-[#f0f4f8] flex justify-between items-center text-xs font-semibold text-[#191c1d]">
+                        <span>Total Spent in Budget:</span>
+                        <span className="font-mono text-[#006397] font-bold">
+                          {sym}{totalBudgetSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+
             <div className="flex justify-between text-[#74777d]">
               <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#74777d]" />
-                <span>'Other' / Unallocated:</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${targetBudget - totalBudgetSpent >= 0 ? 'bg-[#00a656]' : 'bg-[#ba1a1a]'}`} />
+                <span>Remaining in target:</span>
               </span>
-              <span className="font-mono font-bold text-[#44474c]">
-                {sym}{otherSpent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
-            <div className="flex justify-between text-[#74777d]">
-              <span>Remaining in target:</span>
               <span className={`font-mono font-bold ${targetBudget - totalBudgetSpent >= 0 ? 'text-[#00a656]' : 'text-[#ba1a1a]'}`}>
                 {sym}{Math.max(0, targetBudget - totalBudgetSpent).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
@@ -395,7 +451,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
-              Net Available Per Day
+              Available Per Day
             </span>
             <span className="text-xs font-semibold text-[#00a656] bg-[#00a656]/10 px-2 py-0.5 rounded-full">
               {daysLeftInCycle} Days Left
@@ -427,7 +483,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         <div className="bg-white p-5 rounded-2xl border border-[#e1e3e4] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#006397] bg-[#006397]/10 px-2.5 py-1 rounded-full">
-              Rolling Pool Today
+              Today Pool
             </span>
             <span className="text-xs text-[#74777d]">
               Base: <strong className="text-[#191c1d] font-mono">{sym}{totalRollingBaseRate.toFixed(2)}/day</strong>

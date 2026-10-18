@@ -59,11 +59,17 @@ export function calculateSummary(
     .filter((t) => t.type === 'expense' && !t.isTransfer && !t.excludeFromBudget)
     .reduce((sum, t) => sum + getTransactionBudgetAmount(t), 0);
 
+  const totalSplitRepayments = transactions
+    .filter((t) => t.type === 'income' && !t.isTransfer && !t.excludeFromBudget && t.isSplitRepayment)
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const netExpenses = Math.max(0, totalExpenses - totalSplitRepayments);
+
   const totalIncome = transactions
     .filter((t) => t.type === 'income' && !t.isTransfer && !t.excludeFromBudget)
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const remaining = Math.max(0, monthlyTarget - totalExpenses);
+  const remaining = Math.max(0, monthlyTarget - netExpenses);
 
   // Calculate days left until payday anchor
   const now = new Date();
@@ -81,7 +87,9 @@ export function calculateSummary(
   const dailyAllowance = Math.round((remaining / daysLeft) * 100) / 100;
 
   return {
-    totalExpenses,
+    totalExpenses: netExpenses,
+    grossExpenses: totalExpenses,
+    totalSplitRepayments,
     totalIncome,
     remaining,
     monthlyTarget,

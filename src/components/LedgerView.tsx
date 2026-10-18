@@ -177,7 +177,6 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     });
     return map;
   }, [transactions]);
-  
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
@@ -237,6 +236,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     budgetMode?: 'include' | 'partial' | 'exclude';
     budgetAmount?: string;
     returnedAmount?: string;
+    isSplitRepayment?: boolean;
   }>({
     type: 'expense',
     category: '',
@@ -249,6 +249,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
     budgetMode: 'include',
     budgetAmount: '',
     returnedAmount: '',
+    isSplitRepayment: false,
   });
 
   // Lock body scroll when modal is open
@@ -363,6 +364,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       returnedAmount: typeof tx.budgetAmount === 'number' && tx.amount > tx.budgetAmount
         ? String(tx.amount - tx.budgetAmount)
         : '',
+      isSplitRepayment: tx.isSplitRepayment || false,
     });
     setIsEditing(true);
   };
@@ -388,6 +390,10 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
       budgetAmount: editForm.type === 'expense' && editForm.budgetMode === 'partial' && !isNaN(parseFloat(editForm.budgetAmount || ''))
         ? Math.max(0, parseFloat(editForm.budgetAmount || ''))
         : undefined,
+      initialBudgetAmount: editForm.type === 'expense' && editForm.budgetMode === 'partial' && !isNaN(parseFloat(editForm.budgetAmount || ''))
+        ? (selectedTx.initialBudgetAmount ?? Math.max(0, parseFloat(editForm.budgetAmount || '')))
+        : undefined,
+      isSplitRepayment: editForm.type === 'income' && editForm.isSplitRepayment ? true : undefined,
     };
 
     onUpdateTransaction(selectedTx.id, updated);
@@ -1217,6 +1223,14 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                               );
                             })()
                           )}
+                          {tx.type === 'income' && tx.isSplitRepayment && (
+                            <span
+                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0] shrink-0"
+                              title="Split repayment (reduces Spent in Budget)"
+                            >
+                              <span className="material-symbols-outlined text-[11px]">call_split</span>
+                            </span>
+                          )}
                           {tx.type === 'expense' && tx.excludeFromBudget && (
                             <span
                               className="w-2 h-2 rounded-full bg-[#ba1a1a] shrink-0"
@@ -1226,7 +1240,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                           {tx.type === 'expense' && !tx.excludeFromBudget && typeof tx.budgetAmount === 'number' && (
                             <span
                               className="w-2 h-2 rounded-full bg-[#eab308] shrink-0"
-                              title={`Partial: ${sym}${tx.budgetAmount.toFixed(2)}`}
+                              title={`Partial Include: ${sym}${tx.budgetAmount.toFixed(2)}`}
                             />
                           )}
                         </div>
@@ -1393,6 +1407,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                       <span className="font-medium text-[#191c1d]">{selectedTx.memo}</span>
                     </div>
                   )}
+                  {/* Expense Budget Impact */}
                   {selectedTx.type === 'expense' && (
                     <div className="flex justify-between text-sm items-center">
                       <span className="text-[#44474c]">Budget Impact:</span>
@@ -1406,8 +1421,18 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                         {selectedTx.excludeFromBudget
                           ? 'Excluded'
                           : typeof selectedTx.budgetAmount === 'number'
-                          ? `Partial: ${sym}${selectedTx.budgetAmount.toFixed(2)}`
+                          ? `${sym}${selectedTx.budgetAmount.toFixed(2)}`
                           : 'Included'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* If Income is split repayment, show badge */}
+                  {selectedTx.type === 'income' && selectedTx.isSplitRepayment && (
+                    <div className="pt-2 border-t border-[#f0f1f2] flex justify-between items-center text-xs">
+                      <span className="text-[#44474c]">Repayment Status:</span>
+                      <span className="font-bold text-xs px-2.5 py-0.5 rounded-full bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0]">
+                        Split Repayment
                       </span>
                     </div>
                   )}
@@ -1564,6 +1589,42 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                   />
                 </div>
 
+                {/* Split Repayment Toggle (Only for Income) */}
+                {editForm.type === 'income' && (
+                  <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
+                        editForm.isSplitRepayment ? 'bg-[#059669]/15 text-[#059669]' : 'bg-[#e5e7eb] text-[#74777d]'
+                      }`}>
+                        <span className="material-symbols-outlined text-[16px]">call_split</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-[#191c1d]">
+                          Split Repayment
+                        </span>
+                        <span className="text-[10px] text-[#74777d]">
+                          Reduces 'Spent in Budget' directly
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditForm((prev) => ({ ...prev, isSplitRepayment: !prev.isSplitRepayment }))}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        editForm.isSplitRepayment ? 'bg-[#059669]' : 'bg-[#e5e7eb]'
+                      }`}
+                      role="switch"
+                      aria-checked={editForm.isSplitRepayment}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                          editForm.isSplitRepayment ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
+
                 {/* Budget Inclusion Mode Row (Only for Expense) */}
                 {editForm.type === 'expense' && (
                   <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] flex flex-col gap-2">
@@ -1615,7 +1676,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEditForm((prev) => ({ ...prev, budgetMode: 'exclude', excludeFromBudget: true, budgetAmount: '', returnedAmount: '' }))}
+                          onClick={() => setEditForm((prev) => ({ ...prev, budgetMode: 'exclude', excludeFromBudget: true, budgetAmount: '' }))}
                           className={`px-2.5 py-1 font-bold rounded-lg transition-all ${
                             editForm.budgetMode === 'exclude'
                               ? 'bg-[#ba1a1a] text-white shadow-xs'

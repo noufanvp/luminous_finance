@@ -43,7 +43,11 @@ export interface Transaction {
   isTransfer?: boolean;    // Indicates internal money transfer between accounts
   excludeFromBudget?: boolean; // When true, excludes from budget allocation and pacing calculations
   budgetAmount?: number;       // Custom partial budget impact (e.g. 20 of 200 when 180 is returned/reimbursed)
+  initialBudgetAmount?: number; // Initial partial budget impact before split repayments
   memberId?: string;       // ID of family member associated with this transaction
+  isSplit?: boolean;       // Marked as a split expense expecting repayment
+  isSplitRepayment?: boolean; // Marked as a repayment for a split expense
+  splitExpenseId?: string; // ID of the expense transaction this income is repaying
 }
 
 export interface FixedBill {
